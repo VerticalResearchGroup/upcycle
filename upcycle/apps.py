@@ -9,6 +9,12 @@ class Trace:
     @property
     def flops(self): return sum(op.flops for op in self.oplist)
 
+    def optimize_linears_for_infer(self):
+        for i, op in enumerate(self.oplist):
+            if type(op) is ops.Linear:
+                self.oplist[i] = ops.Linear(
+                    op.dtype, op.train, op.l, op.m, op.n, op.k, False, True)
+
     def train(self):
         new_list = self.oplist.copy()
         for op in reversed(self.oplist):
@@ -19,30 +25,31 @@ class Trace:
 
         self.oplist = new_list
 
+def testapp(dtype, n=1):
+    return Trace([ ops.Linear(dtype, True, 1, n, 512, 1024, False, False) ])
+
 def bertlarge(dtype, n=1, s=512):
     return Trace([
-        ops.Matmul(dtype, True, 1, n * s, 1024, 1024, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 1024, 1024, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 1024, 1024, False, False),
-        ops.Matmul(dtype, True, n * 16, s, s, 64, False, False),
-        # TODO: Softmax
-        ops.Matmul(dtype, True, n * 16, s, 64, s, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 1024, 1024, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 4096, 1024, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 1024, 4096, False, False),
+        ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+        ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+        ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+        ops.Matmul(dtype, True, n * 16, s, s, 64, False, True),
+        ops.Matmul(dtype, True, n * 16, s, 64, s, False, True),
+        ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+        ops.Linear(dtype, True, 1, n * s, 4096, 1024, False, False),
+        ops.Linear(dtype, True, 1, n * s, 1024, 4096, False, False),
     ] * 24)
 
 def bertbase(dtype, n=1, s=512):
     return Trace([
-        ops.Matmul(dtype, True, 1, n * s, 768, 768, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 768, 768, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 768, 768, False, False),
-        ops.Matmul(dtype, True, n * 12, s, s, 64, False, False),
-        # TODO: Softmax
-        ops.Matmul(dtype, True, n * 12, s, 64, s, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 768, 768, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 3072, 768, False, False),
-        ops.Matmul(dtype, True, 1, n * s, 768, 3072, False, False),
+        ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
+        ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
+        ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
+        ops.Matmul(dtype, True, n * 12, s, s, 64, False, True),
+        ops.Matmul(dtype, True, n * 12, s, 64, s, False, True),
+        ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
+        ops.Linear(dtype, True, 1, n * s, 3072, 768, False, False),
+        ops.Linear(dtype, True, 1, n * s, 768, 3072, False, False),
     ] * 12)
 
 def resnet50(dtype, n=1):
@@ -104,57 +111,57 @@ def resnet50(dtype, n=1):
 
 def ssdrn34_1200(dtype, n=1):
     return Trace([
-        ops.Conv2D(dtype, True, 1, 1200, 1200, 3, 600, 600, 64, 7, 7, 2),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 300, 300, 64, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 150, 150, 128, 3, 3, 2),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 300, 300, 64, 150, 150, 128, 1, 1, 2),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 128, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 128, 150, 150, 256, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 150, 150, 256, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 75, 75, 512, 3, 3, 2),
-        ops.Conv2D(dtype, True, 1, 75, 75, 512, 75, 75, 256, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 75, 75, 256, 38, 38, 512, 3, 3, 2),
-        ops.Conv2D(dtype, True, 1, 38, 38, 512, 38, 38, 128, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 38, 38, 128, 19, 19, 256, 3, 3, 2),
-        ops.Conv2D(dtype, True, 1, 19, 19, 256, 19, 19, 128, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 19, 19, 128, 9, 9, 256, 3, 3, 2),
-        ops.Conv2D(dtype, True, 1, 9, 9, 256, 9, 9, 128, 1, 1, 1),
-        ops.Conv2D(dtype, True, 1, 9, 9, 128, 7, 7, 256, 3, 3, 1),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 50, 50, 16, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 150, 150, 256, 50, 50, 324, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 75, 75, 512, 25, 25, 24, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 75, 75, 512, 25, 25, 486, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 38, 38, 512, 13, 13, 24, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 38, 38, 512, 13, 13, 486, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 19, 19, 256, 7, 7, 24, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 19, 19, 256, 7, 7, 486, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 9, 9, 256, 3, 3, 16, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 9, 9, 256, 3, 3, 324, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 7, 7, 256, 3, 3, 16, 3, 3, 3),
-        ops.Conv2D(dtype, True, 1, 7, 7, 256, 3, 3, 324, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 1200, 1200, 3, 600, 600, 64, 7, 7, 2),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 300, 300, 64, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 150, 150, 128, 3, 3, 2),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 300, 300, 64, 150, 150, 128, 1, 1, 2),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 128, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 128, 150, 150, 256, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 150, 150, 256, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 75, 75, 512, 3, 3, 2),
+        ops.Conv2D(dtype, True, n, 75, 75, 512, 75, 75, 256, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 75, 75, 256, 38, 38, 512, 3, 3, 2),
+        ops.Conv2D(dtype, True, n, 38, 38, 512, 38, 38, 128, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 38, 38, 128, 19, 19, 256, 3, 3, 2),
+        ops.Conv2D(dtype, True, n, 19, 19, 256, 19, 19, 128, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 19, 19, 128, 9, 9, 256, 3, 3, 2),
+        ops.Conv2D(dtype, True, n, 9, 9, 256, 9, 9, 128, 1, 1, 1),
+        ops.Conv2D(dtype, True, n, 9, 9, 128, 7, 7, 256, 3, 3, 1),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 50, 50, 16, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 150, 150, 256, 50, 50, 324, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 75, 75, 512, 25, 25, 24, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 75, 75, 512, 25, 25, 486, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 38, 38, 512, 13, 13, 24, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 38, 38, 512, 13, 13, 486, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 19, 19, 256, 7, 7, 24, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 19, 19, 256, 7, 7, 486, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 9, 9, 256, 3, 3, 16, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 9, 9, 256, 3, 3, 324, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 7, 7, 256, 3, 3, 16, 3, 3, 3),
+        ops.Conv2D(dtype, True, n, 7, 7, 256, 3, 3, 324, 3, 3, 3),
     ])
 
 def ssdrn34_300(dtype, n=1):
@@ -212,3 +219,34 @@ def ssdrn34_300(dtype, n=1):
         ops.Conv2D(dtype, True, n, 1, 1, 256, 1, 1, 324, 3, 3, 1),
     ])
 
+def rnnt_infer(dtype, n, il=200, ol=200):
+    return Trace([
+        # Encoder
+        ops.Lstm(dtype, False, n, il, 240, 1024),
+        ops.Lstm(dtype, False, n, il, 1024, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 2048, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024)
+    ] + ([
+        # Decoder
+        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
+        ops.Linear(dtype, False, 1, n, 512, 28, False, False),
+    ] * ol))
+
+def rnnt_train(dtype, n, il=200, ol=200):
+    return Trace([
+        # Encoder
+        ops.Lstm(dtype, False, n, il, 240, 1024),
+        ops.Lstm(dtype, False, n, il, 1024, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 2048, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024)
+    ] + ([
+        # Decoder
+        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
+        ops.Linear(dtype, False, 1, n, 512, 28, False, False),
+    ] * ol))

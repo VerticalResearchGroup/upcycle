@@ -1,0 +1,15 @@
+import upcycle as U
+
+c = U.model.cache.Cache(1, 4, 6)
+
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))
+c.insert(0x000)
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))
+c.insert(0x100)
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))
+c.insert(0x200)
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))
+c.insert(0x300)
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))
+c.insert(0x400)
+print(c.lookup(0x000), c.lookup(0x100), c.lookup(0x200), c.lookup(0x300), c.lookup(0x400))

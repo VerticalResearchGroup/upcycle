@@ -17,6 +17,9 @@ print('SSD-Resnet34 (1200x1200): ', ssd1200.flops / 1e9)
 ssd300 = U.apps.ssdrn34_300(U.Dtype.I8, n=1)
 print('SSD-Resnet34 (300x300): ', ssd300.flops / 1e9)
 
+rnnt_infer = U.apps.rnnt_infer(U.Dtype.I8, n=1, il=389, ol=195)
+print('RNN-T (389 -> 195): ', rnnt_infer.flops)
+
 print()
 print('=== Forward + Backward ===')
 bl.train()
