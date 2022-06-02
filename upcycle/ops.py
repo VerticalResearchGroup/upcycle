@@ -22,9 +22,6 @@ class Operator:
     @property
     def flops(self): raise NotImplementedError()
 
-    @property
-    def dtsize(self): return int(self.dtype)
-
 @dataclass(frozen=True)
 class Matmul(Operator):
     l : int

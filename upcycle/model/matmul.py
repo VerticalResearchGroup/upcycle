@@ -32,6 +32,7 @@ class MatmulTile(WorkItem):
         m = self.mm.m
         n = self.mm.k
         k = self.mm.k
+        assert self.mm.dtype == Dtype.I8, 'FP16 not supported yet'
         if not self.tr_a:
             yield AffineTile(1, self.mo * k + self.ko, k, self.tk, self.tm)
         else:

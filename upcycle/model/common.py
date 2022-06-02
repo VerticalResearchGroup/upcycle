@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+from typing import Iterator
 
 from ..common import *
 from .. import ops
-from .. import apps
 
 @dataclass
 class TimeSpan:
@@ -50,7 +50,7 @@ class WorkItem:
     def flops(self): raise NotImplementedError()
 
     @property
-    def read_trace(self): raise NotImplementedError()
+    def read_trace(self) -> Iterator[AffineTile]: raise NotImplementedError()
 
 @dataclass
 class GlobalWorkList:
@@ -59,6 +59,9 @@ class GlobalWorkList:
     @staticmethod
     def from_arch(arch : Arch):
         return GlobalWorkList([list() for _ in range(arch.ntiles)])
+
+    @property
+    def nsteps(self): return max(map(len, self.tiles))
 
 placement_funcs = {}
 
@@ -72,3 +75,28 @@ def place_op(mode : str, arch : Arch, op : ops.Operator) -> GlobalWorkList:
     global placement_funcs
     return placement_funcs[(mode, type(op))](arch, op)
 
+class Soc:
+    def __init__(self, arch):
+        self.arch = arch
+
+    def simulate(self, op : ops.Operator): raise NotImplementedError()
+
+    @property
+    def cycles(self): raise NotImplementedError()
+
+    @property
+    def placement_mode(self): return 'naive'
+
+
+socs = {}
+
+def register_soc(archclass):
+    def decorator(xclass):
+        global socs
+        socs[archclass] = xclass
+        return xclass
+    return decorator
+
+def make_soc(arch : Arch, *args, **kwargs) -> Soc:
+    global socs
+    return socs[type(arch)](arch, *args, **kwargs)

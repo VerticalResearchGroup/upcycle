@@ -1,39 +1,34 @@
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import IntEnum
 import random
 
-@dataclass(order=True)
+
+class Dtype(IntEnum):
+    I8 = 1
+    FP16 = 2
+
+    @staticmethod
+    def sizeof(dt): return int(dt)
+
+
+@dataclass(order=True, frozen=True)
 class Arch:
     freq : float
+    vbits : int
+    macs : int
+
+    @property
+    def ntiles(self): raise NotImplementedError()
+
+    def vlen(self, dtype : Dtype): return self.vbits / 8 / Dtype.sizeof(dtype)
+
+    def peak_opc(self, dtype : Dtype):
+        return self.ntiles * self.vlen(dtype) * self.macs * 2
+
+@dataclass(order=True, frozen=True)
+class FlatMeshArch(Arch):
     nrow : int
     ncol : int
 
     @property
     def ntiles(self): return self.nrow * self.ncol
-
-    def tile_coords(self, tid):
-        assert tid >= 0 and tid < self.ntiles
-        return (tid // self.ncol), (tid % self.ncol)
-
-    def addr_llc_coords(self, addr : int):
-        line = addr >> 6
-        tid = line & (self.ntiles - 1)
-        return self.tile_coords(tid)
-
-@dataclass(order=True)
-class ArchRandomLlc(Arch):
-    llc_addr_map : list[int] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.llc_addr_map = list(range(self.ntiles))
-        random.shuffle(self.llc_addr_map)
-
-    def addr_llc_coords(self, addr : int):
-        line = addr >> 6
-        tid = line & (self.ntiles - 1)
-        return self.tile_coords(self.llc_addr_map[tid])
-
-class Dtype(Enum):
-    I8 = 1
-    FP16 = 2
-
