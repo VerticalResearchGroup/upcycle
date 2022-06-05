@@ -9,51 +9,66 @@ from .. import ops
 
 
 @dataclass(frozen=True)
-class ConvTile(WorkItemPerfectCompute):
-    mm : ops.Matmul
-    li : int
-    mo : int
-    no : int
-    ko : int
-    tm : int
-    tn : int
-    tk : int
-    tr_a : bool
-    tr_b : bool
+class Conv2DTile(WorkItemPerfectCompute):
+    conv : ops.Conv2D
+    write : bool
+    ni : int
+    ps : slice
+    qs : slice
+    cs : slice
+    ks : slice
+
 
     @property
-    def flops(self): return self.tm * self.tn * self.tk * 2
+    def flops(self):
+        return \
+            slice_len(self.ps, self.conv.p) * \
+            slice_len(self.qs, self.conv.q) * \
+            slice_len(self.ks, self.conv.k) * \
+            slice_len(self.cs, self.conv.c) * \
+            self.conv.r * self.conv.s * 2
 
     @property
-    def tile_trace(self):
-        m = self.mm.m
-        n = self.mm.k
-        k = self.mm.k
-        assert self.mm.dtype == Dtype.I8, 'FP16 not supported yet'
-        if not self.tr_a:
-            yield AffineTile(1, self.mo * k + self.ko, k, self.tk, self.tm)
-        else:
-            yield AffineTile(1, self.ko * m + self.mo, m, self.tm, self.tk)
+    def read_trace(self):
+        n = self.conv.n
+        h = self.conv.h
+        w = self.conv.w
+        c = self.conv.c
+        k = self.conv.k
+        r = self.conv.r
+        s = self.conv.s
+        st = self.conv.stride
 
-        if self.tr_b:
-            yield AffineTile(2, self.no * k + self.ko, k, self.tk, self.tn)
-        else:
-            yield AffineTile(2, self.ko * n + self.no, n, self.tn, self.tk)
+        yield from Tensor(1, self.dtype, (n, h, w, c))[self.ni, slice_mul(self.ps, st), slice_mul(self.qs, st), self.cs]
+        yield from Tensor(2, self.dtype, (r, s, k, c))[:, :, self.ks, self.cs]
+
+
+    @property
+    def write_trace(self):
+        if not self.write: return
+        raise NotImplementedError()
+
+
 
 @register_placement('naive', FlatMeshArch, ops.Conv2D)
+@register_placement('naive', OracleArch, ops.Conv2D)
 def place_conv2d_naive(arch : Arch, conv : ops.Conv2D):
+    qblk = conv.p * conv.q // arch.ntiles
     tiles = [
         [
-            MatmulTile(
-                arch, mm.dtype,
-                mm, li, bm, bn, bk,
-                min(mm.m - bm, 16), min(mm.n - bn, 8), min(mm.k - bk, 64),
-                mm.tr_a, mm.tr_b)
-            for bk in range(0, mm.k, 64)
+            Conv2DTile(
+                arch, conv.dtype,
+                conv, False, ni,
+                slice_blk(pi, conv.p, 1),
+                slice_blk(bq, conv.q, qblk),
+                slice_blk(bc, conv.c, 16),
+                slice_blk(bk, conv.k, 64))
+            for bc in range(0, conv.c, 16)
         ]
-        for bm in range(0, mm.m, 16)
-        for bn in range(0, mm.n, 8)
-        for li in range(mm.l)
+        for bk in range(0, conv.k, 64)
+        for bq in range(0, conv.q, qblk)
+        for pi in range(0, conv.p, 1)
+        for ni in range(conv.n)
     ]
 
     gwl = GlobalWorkList.from_arch(arch)

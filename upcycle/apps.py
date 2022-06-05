@@ -25,8 +25,12 @@ class Trace:
 
         self.oplist = new_list
 
-def testapp(dtype, n=1):
+def testmatmul(dtype, n=1):
     return Trace([ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
+
+
+def testconv(dtype, n=1):
+    return Trace([ ops.Conv2D(dtype, True, n, 56, 56, 64, 56, 56, 64, 1, 1, 1) ])
 
 def bertlarge(dtype, n=1, s=512):
     return Trace([

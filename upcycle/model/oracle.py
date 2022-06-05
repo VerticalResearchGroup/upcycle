@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
+import logging
 
 from ..common import *
 from .. import ops
@@ -42,26 +43,29 @@ class OracleSoc(Soc):
         l1 = [cache.Cache(l1_nset, l1_nway, 6) for _ in range(self.arch.ntiles)]
 
         compute_cyc = 0
+        logging.debug(f'Simulating {gwl.nsteps} steps with {gwl.flops} flops...')
 
         for step in range(gwl.nsteps):
-            print(f'Step {step}')
+            logging.debug(f'Step {step}')
             net = noc.Noc.from_arch(self.arch)
             self.nocs.append(net)
             oracle_map = dict()
 
-            max_cyc = 0
+            max_exec_cyc = 0
 
             for tid, tile in enumerate(gwl.tiles):
                 if step >= len(tile): continue
-                max_cyc = max(tile[step].exec_lat, max_cyc)
+                max_exec_cyc = max(tile[step].exec_lat, max_exec_cyc)
                 for l in tile[step].read_trace:
                     if l1[tid].lookup(l): continue
                     l1[tid].insert(l)
                     if l not in oracle_map: oracle_map[l] = []
                     oracle_map[l].append(tid)
 
-            avg_dests_per_line = np.average([len(d) for _, d in oracle_map.items()])
-            print(f'Avg dests per line: {avg_dests_per_line}')
+            dsts = [len(d) for _, d in oracle_map.items()]
+            if len(dsts) > 0:
+                avg_dests_per_line = np.average(dsts)
+                logging.debug(f'+ Avg dests per line: {avg_dests_per_line}')
 
             for line, dests in oracle_map.items():
                 r, c = self.addr_llc_coords(line)
@@ -84,10 +88,14 @@ class OracleSoc(Soc):
                         net.count_hop(rs, rd)
                         net.count_hop(rs, rd)
 
+            logging.debug(f'+ Exec latency: {compute_cyc}')
+
             self._nsteps += 1
             self._cycles += max(compute_cyc, net.latency)
-            compute_cyc = max_cyc
+            compute_cyc = max_exec_cyc
 
+        logging.debug('Compute Drain')
+        logging.debug(f'+ Exec latency: {compute_cyc}')
         self._cycles += compute_cyc
 
 

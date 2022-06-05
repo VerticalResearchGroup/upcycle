@@ -36,29 +36,17 @@ class Matmul(Operator):
 
 @dataclass(frozen=True)
 @register_backward(Matmul)
-class MatmulDa(Matmul):
+class MatmulBwd(Matmul):
     @staticmethod
     def from_forward(mm : Matmul):
-        return MatmulDa(mm.dtype, False, mm.l, mm.m, mm.n, mm.k, mm.tr_a, mm.tr_b)
-
-@dataclass(frozen=True)
-@register_backward(Matmul)
-class MatmulDb(Matmul):
-    @staticmethod
-    def from_forward(mm : Matmul):
-        return MatmulDb(mm.dtype, False, mm.l, mm.m, mm.n, mm.k, mm.tr_a, mm.tr_b)
-
+        return MatmulBwd(mm.dtype, False, mm.l, mm.m, mm.n, mm.k, mm.tr_a, mm.tr_b)
 
 @dataclass(frozen=True)
 class Linear(Matmul): pass
 
 @dataclass(frozen=True)
 @register_backward(Linear)
-class LinearDi(MatmulDa): pass
-
-@dataclass(frozen=True)
-@register_backward(Linear)
-class LinearDw(MatmulDb): pass
+class LinearBwd(MatmulBwd): pass
 
 @dataclass(frozen=True)
 class Conv2D(Operator):
@@ -75,27 +63,17 @@ class Conv2D(Operator):
 
     @property
     def flops(self):
-        return self.p * self.q * self.k * self.r * self.s * self.c * 2
+        return self.n * self.p * self.q * self.k * self.r * self.s * self.c * 2
 
 @dataclass(frozen=True)
 @register_backward(Conv2D)
-class Conv2DDi(Conv2D):
+class Conv2DBwd(Conv2D):
     @property
     def flops(self): raise NotImplementedError()
 
     @staticmethod
     def from_forward(c : Conv2D):
-        return Conv2DDi(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride)
-
-@dataclass(frozen=True)
-@register_backward(Conv2D)
-class Conv2DDw(Conv2D):
-    @property
-    def flops(self): raise NotImplementedError()
-
-    @staticmethod
-    def from_forward(c : Conv2D):
-        return Conv2DDw(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride)
+        return Conv2DBwd(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride)
 
 @dataclass(frozen=True)
 class Lstm(Operator):

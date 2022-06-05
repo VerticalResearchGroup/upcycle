@@ -109,6 +109,10 @@ class GlobalWorkList:
     @property
     def nsteps(self): return max(map(len, self.tiles))
 
+    @property
+    def flops(self):
+        return sum(sum(map(lambda x: x.flops, tile)) for tile in self.tiles)
+
 placement_funcs = {}
 
 def register_placement(mode, archclass, opclass):
