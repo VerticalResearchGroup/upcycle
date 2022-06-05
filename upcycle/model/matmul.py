@@ -9,7 +9,7 @@ from .. import ops
 
 
 @dataclass(frozen=True)
-class MatmulTile(WorkItem):
+class MatmulTile(WorkItemPerfectCompute):
     mm : ops.Matmul
     li : int
     mo : int
@@ -22,40 +22,53 @@ class MatmulTile(WorkItem):
     tr_b : bool
 
     @property
-    def exec_lat(self): return 0
-
-    @property
-    def flops(self): return self.tm * self.tn * self.mm.k * 2
+    def flops(self): return self.tm * self.tn * self.tk * 2
 
     @property
     def read_trace(self):
+        l = self.mm.l
         m = self.mm.m
-        n = self.mm.k
+        n = self.mm.n
         k = self.mm.k
-        assert self.mm.dtype == Dtype.I8, 'FP16 not supported yet'
+        mstart, mstop = self.mo, self.mo + self.tm
+        nstart, nstop = self.no, self.no + self.tn
+        kstart, kstop = self.ko, self.ko + self.tk
         if not self.tr_a:
-            yield AffineTile(1, self.mo * k + self.ko, k, self.tk, self.tm)
+            yield from Tensor(1, self.dtype, (l, m, k))[self.li, mstart:mstop, kstart:kstop]
         else:
-            yield AffineTile(1, self.ko * m + self.mo, m, self.tm, self.tk)
+            yield from Tensor(1, self.dtype, (l, k, m))[self.li, kstart:kstop, mstart:mstop]
 
-        if self.tr_b:
-            yield AffineTile(2, self.no * k + self.ko, k, self.tk, self.tn)
+        if not self.tr_b:
+            yield from Tensor(2, self.dtype, (l, k, n))[self.li, kstart:kstop, nstart:nstop]
         else:
-            yield AffineTile(2, self.ko * n + self.no, n, self.tn, self.tk)
+            yield from Tensor(2, self.dtype, (l, n, k))[self.li, nstart:nstop, kstart:kstop]
 
-@register_placement('naive', ops.Matmul)
-@register_placement('naive', ops.Linear)
+    @property
+    def write_trace(self):
+        l = self.mm.l
+        m = self.mm.m
+        n = self.mm.n
+        mstart, mstop = self.mo, self.mo + self.tm
+        nstart, nstop = self.no, self.no + self.tn
+        yield from Tensor(3, self.dtype, (l, m, n))[self.li, mstart:mstop, nstart:nstop]
+
+
+@register_placement('naive', FlatMeshArch, ops.Matmul)
+@register_placement('naive', FlatMeshArch, ops.Linear)
+@register_placement('naive', OracleArch, ops.Matmul)
+@register_placement('naive', OracleArch, ops.Linear)
 def place_matmul_naive(arch : Arch, mm : ops.Matmul):
     tiles = [
         [
             MatmulTile(
+                arch, mm.dtype,
                 mm, li, bm, bn, bk,
-                min(mm.m - bm, 16), min(mm.n - bn, 4), min(mm.k - bk, 64),
+                min(mm.m - bm, 16), min(mm.n - bn, 8), min(mm.k - bk, 64),
                 mm.tr_a, mm.tr_b)
             for bk in range(0, mm.k, 64)
         ]
         for bm in range(0, mm.m, 16)
-        for bn in range(0, mm.n, 4)
+        for bn in range(0, mm.n, 8)
         for li in range(mm.l)
     ]
 

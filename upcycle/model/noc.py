@@ -28,6 +28,8 @@ class Router:
     @property
     def num_out(self): return self.out_north + self.out_south + self.out_east + self.out_west
 
+    def __hash__(self): return hash((self.r, self.c))
+
 
 @dataclass
 class Noc:
@@ -70,6 +72,10 @@ class Noc:
         route[-1].eject += 1
         for i in range(len(route) - 1):
             self.count_hop(route[i], route[i + 1])
+
+    def route_hops(self, route):
+        for i in range(len(route) - 1):
+            yield (route[i], route[i + 1])
 
     @property
     def latency(self):

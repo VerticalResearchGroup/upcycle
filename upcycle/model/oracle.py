@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import numpy as np
 
 from ..common import *
 from .. import ops
@@ -7,8 +8,8 @@ from .common import *
 from . import cache
 from . import noc
 
-@register_soc(FlatMeshArch)
-class FlatMeshSoc(Soc):
+@register_soc(OracleArch)
+class OracleSoc(Soc):
     def __init__(self, arch : Arch, l1_capacity=16384, l1_assoc=4, randomize_llc=False):
         super().__init__(arch)
         self.nocs = []
@@ -40,26 +41,55 @@ class FlatMeshSoc(Soc):
         l1_nset = int(self.l1_capacity / 64 / l1_nway)
         l1 = [cache.Cache(l1_nset, l1_nway, 6) for _ in range(self.arch.ntiles)]
 
+        compute_cyc = 0
+
         for step in range(gwl.nsteps):
+            print(f'Step {step}')
             net = noc.Noc.from_arch(self.arch)
             self.nocs.append(net)
+            oracle_map = dict()
+
+            max_cyc = 0
+
             for tid, tile in enumerate(gwl.tiles):
-                sr, sc = self.tile_coords(tid)
                 if step >= len(tile): continue
-                wi = tile[step]
-                for l in wi.line_trace:
+                max_cyc = max(tile[step].exec_lat, max_cyc)
+                for l in tile[step].read_trace:
                     if l1[tid].lookup(l): continue
                     l1[tid].insert(l)
-                    dr, dc = self.addr_llc_coords(l)
-                    route = list(net.get_route((sr, sc), (dr, dc)))
-                    net.count_route(route)
-                    net.count_route(list(reversed(route)))
-                    net.count_route(list(reversed(route)))
-                    net.count_route(list(reversed(route)))
-                    net.count_route(list(reversed(route)))
+                    if l not in oracle_map: oracle_map[l] = []
+                    oracle_map[l].append(tid)
+
+            avg_dests_per_line = np.average([len(d) for _, d in oracle_map.items()])
+            print(f'Avg dests per line: {avg_dests_per_line}')
+
+            for line, dests in oracle_map.items():
+                r, c = self.addr_llc_coords(line)
+                net[r, c].inject += 1
+
+                for dest in dests:
+                    dr, dc = self.tile_coords(dest)
+                    net[dr, dc].eject += 1
+
+                routes = [
+                    net.get_route((r, c), self.tile_coords(tid))
+                    for tid in dests
+                ]
+
+                seen_hops = set[(noc.Router, noc.Router)]()
+                for route in routes:
+                    for (rs, rd) in net.route_hops(route):
+                        if (rs, rd) in seen_hops: continue
+                        seen_hops.add((rs, rd))
+                        net.count_hop(rs, rd)
+                        net.count_hop(rs, rd)
 
             self._nsteps += 1
-            self._cycles += net.latency
+            self._cycles += max(compute_cyc, net.latency)
+            compute_cyc = max_cyc
+
+        self._cycles += compute_cyc
+
 
     def noc(self, step : int): return self.nocs[step]
 
@@ -68,7 +98,6 @@ class FlatMeshSoc(Soc):
 
     @property
     def cycles(self): return self._cycles
-
 
 
 

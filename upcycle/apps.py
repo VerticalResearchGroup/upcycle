@@ -26,7 +26,7 @@ class Trace:
         self.oplist = new_list
 
 def testapp(dtype, n=1):
-    return Trace([ ops.Linear(dtype, True, 1, n, 512, 1024, False, False) ])
+    return Trace([ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
 
 def bertlarge(dtype, n=1, s=512):
     return Trace([

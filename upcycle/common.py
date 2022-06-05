@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 import random
 
-
 class Dtype(IntEnum):
     I8 = 1
     FP16 = 2
@@ -32,3 +31,18 @@ class FlatMeshArch(Arch):
 
     @property
     def ntiles(self): return self.nrow * self.ncol
+
+@dataclass(order=True, frozen=True)
+class OracleArch(FlatMeshArch): pass
+
+@dataclass(order=True, frozen=True)
+class ClusteredMeshArch(Arch):
+    nrow : int
+    ncol : int
+    cluster_size : int
+
+    @property
+    def ntiles(self): return self.nrow * self.ncol * self.cluster_size
+
+    @property
+    def nclusters(self): return self.nrow * self.ncol
