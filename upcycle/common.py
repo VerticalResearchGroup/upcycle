@@ -1,10 +1,18 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 def slice_mul(s, c):
     start = None if s.start is None else s.start * c
     stop = None if s.stop is None else s.stop * c
+    return slice(start, stop, None)
+
+def slice_add(s, c):
+    start = None if s.start is None else s.start + c
+    stop = None if s.stop is None else s.stop + c
     return slice(start, stop, None)
 
 def slice_len(s, n):
@@ -30,6 +38,11 @@ class Arch:
     macs : int
     nrows : int
     ncols : int
+    noc_ports_per_dir : int = 1
+
+    def __post_init__(self):
+        if self.noc_ports_per_dir > 1:
+            logger.warn(f'Arch has {self.noc_ports_per_dir} ports per direction (>1)')
 
     @property
     def ntiles(self): return self.nrows * self.ncols

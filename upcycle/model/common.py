@@ -1,10 +1,13 @@
 from dataclasses import dataclass
+from random import shuffle
 from typing import Iterator
 import numpy as np
 import itertools
-import functools
+import logging
 
 from ..common import *
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Tensor:
@@ -63,6 +66,7 @@ class Tensor:
             line = (upper | off) & ~0x3F
             if last is not None and line == last: continue
             last = line
+            # yield line
             lines.append(line)
 
         self.linecache[key] = (idx, lines)
@@ -143,6 +147,21 @@ class WorkList:
                 self.contract1d_place(row, vtiles[row_i])
             off += ntiles
 
+    def flatmap_place(self, vtiles : list[list[WorkItem]], bbox=None, randomize=False):
+        if bbox is None: bbox = (0, self.arch.nrows, 0, self.arch.ncols)
+        if randomize: shuffle(vtiles)
+
+        bbox_nrows = bbox[1] - bbox[0]
+        bbox_ncols = bbox[3] - bbox[2]
+        bbox_ntiles = bbox_nrows * bbox_ncols
+
+        for vtid, vtile in enumerate(vtiles):
+            tid = vtid % bbox_ntiles
+            lr, lc = (tid // bbox_ncols), (tid % bbox_ncols)
+            tl = self[bbox[0] + lr, bbox[2] + lc]
+            tl += list(itertools.chain(vtile))
+
+
     @property
     def nsteps(self): return max(map(len, self.flattiles))
 
@@ -164,11 +183,15 @@ def register_placement(mode, archclass, opclass):
 
 def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
     global placement_funcs
-    return placement_funcs[(mode, type(arch), type(op))](arch, op)
+    logger.debug(f'place_op(mode={mode}): {arch} {op}')
+    wl : WorkList = placement_funcs[(mode, type(arch), type(op))](arch, op)
+    assert op.flops == wl.flops, f'{op.flops} != {wl.flops}, {wl.flops / op.flops}'
+    return wl
 
 class Soc:
-    def __init__(self, arch : Arch):
+    def __init__(self, arch : Arch, placement_mode : str = 'naive'):
         self.arch = arch
+        self.placement_mode = placement_mode
 
     def simulate(self, op : Operator): raise NotImplementedError()
 
@@ -179,9 +202,6 @@ class Soc:
 
     @property
     def cycles(self): raise NotImplementedError()
-
-    @property
-    def placement_mode(self): return 'naive'
 
     @property
     def total_hops(self):

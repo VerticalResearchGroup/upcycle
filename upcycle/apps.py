@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from .common import *
 from . import ops
 
 @dataclass
@@ -9,11 +10,14 @@ class Trace:
     @property
     def flops(self): return sum(op.flops for op in self.oplist)
 
-    def optimize_linears_for_infer(self):
+    def infer(self):
         for i, op in enumerate(self.oplist):
             if type(op) is ops.Linear:
                 self.oplist[i] = ops.Linear(
                     op.dtype, op.train, op.l, op.m, op.n, op.k, False, True)
+            elif type(op) is ops.Lstm:
+                self.oplist[i] = ops.Lstm(
+                    op.dtype, op.train, op.n, op.s, op.d, op.h, False, True)
 
     def train(self):
         new_list = self.oplist.copy()
@@ -24,6 +28,10 @@ class Trace:
                     new_list.append(bop.from_forward(op))
 
         self.oplist = new_list
+
+    @property
+    def unique_ops(self):
+        return set(self.oplist)
 
 def testmatmul(dtype, n=1):
     return Trace([ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
@@ -226,15 +234,15 @@ def ssdrn34_300(dtype, n=1):
 def rnnt_infer(dtype, n, il=200, ol=200):
     return Trace([
         # Encoder
-        ops.Lstm(dtype, False, n, il, 240, 1024),
-        ops.Lstm(dtype, False, n, il, 1024, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 2048, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 1024, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 1024, 1024)
+        ops.Lstm(dtype, False, n, il, 240, 1024, False, False),
+        ops.Lstm(dtype, False, n, il, 1024, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 2048, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024, False, False)
     ] + ([
         # Decoder
-        ops.Lstm(dtype, False, n, 1, 320, 320),
-        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
+        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
         ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
         ops.Linear(dtype, False, 1, n, 512, 28, False, False),
     ] * ol))
@@ -242,15 +250,24 @@ def rnnt_infer(dtype, n, il=200, ol=200):
 def rnnt_train(dtype, n, il=200, ol=200):
     return Trace([
         # Encoder
-        ops.Lstm(dtype, False, n, il, 240, 1024),
-        ops.Lstm(dtype, False, n, il, 1024, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 2048, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 1024, 1024),
-        ops.Lstm(dtype, False, n, il // 2, 1024, 1024)
+        ops.Lstm(dtype, False, n, il, 240, 1024, False, False),
+        ops.Lstm(dtype, False, n, il, 1024, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 2048, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024, False, False),
+        ops.Lstm(dtype, False, n, il // 2, 1024, 1024, False, False)
     ] + ([
         # Decoder
-        ops.Lstm(dtype, False, n, 1, 320, 320),
-        ops.Lstm(dtype, False, n, 1, 320, 320),
+        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
+        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
         ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
         ops.Linear(dtype, False, 1, n, 512, 28, False, False),
     ] * ol))
+
+app_infer_flops = {
+    'bert-large-squad-384': bertlarge(Dtype.I8, 1, 384).flops,
+    'resnet50': resnet50(Dtype.I8, 1).flops,
+    'ssdrn34-1200': ssdrn34_1200(Dtype.I8, 1).flops,
+    'rnnt': rnnt_infer(Dtype.I8, 1).flops,
+}
+
+

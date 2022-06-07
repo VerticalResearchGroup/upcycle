@@ -1,7 +1,10 @@
 from dataclasses import dataclass
+import logging
 
 from ..common import *
 from .common import *
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Conv2D(Operator):
@@ -64,10 +67,10 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         if not self.write: return
         raise NotImplementedError()
 
+
 @M.register_placement('naive', FlatMeshArch, Conv2D)
 @M.register_placement('naive', OracleArch, Conv2D)
 def place_conv2d_naive(arch : Arch, conv : Conv2D):
-    qblk = 4
     n = conv.n
     h = conv.h
     w = conv.w
@@ -90,16 +93,68 @@ def place_conv2d_naive(arch : Arch, conv : Conv2D):
                     arch, conv.dtype,
                     conv, i, w, o, False, ni,
                     slice_blk(pi, conv.p, 1),
-                    slice_blk(bq, conv.q, qblk),
+                    slice_blk(qi, conv.q, 1),
                     slice_blk(bc, conv.c, 16),
                     slice_blk(bk, conv.k, 16))
                 for bc in range(0, conv.c, 16)
             ]
             for pi in range(0, conv.p, 1)
+            for bk in range(bbk, min(bbk + 64, conv.k), 16)
         ]
-        for bq in range(0, conv.q, qblk)
-        for bk in range(0, conv.k, 16)
         for ni in range(conv.n)
+        for qi in range(0, conv.q, 1)
+        for bbk in range(0, conv.k, 64)
     ])
 
     return wl
+
+@M.register_placement('flatmap', FlatMeshArch, Conv2D)
+@M.register_placement('flatmap', OracleArch, Conv2D)
+def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
+    n = conv.n
+    h = conv.h
+    w = conv.w
+    c = conv.c
+    p = conv.p
+    q = conv.q
+    k = conv.k
+    r = conv.r
+    s = conv.s
+
+    i = M.Tensor(1, conv.dtype, (n, h, w, c))
+    w = M.Tensor(2, conv.dtype, (r, s, k, c))
+    o = M.Tensor(3, conv.dtype, (n, p, q, k))
+
+    npixels = n * p * q
+    if npixels > arch.ntiles:
+        kblk = 128
+    elif npixels > arch.ntiles // 4:
+        kblk = 64
+    else:
+        kblk = 8
+
+    qblk = int(max(1, 32 / kblk))
+    nblk = int(max(1, arch.ncols // n))
+
+    wl = M.WorkList.from_arch(arch, [i, w, o])
+    for ni, col in enumerate(range(0, arch.ncols, nblk)):
+        ncols = min(nblk, arch.ncols - col)
+        wl.flatmap_place([
+            [
+                Conv2DTile(
+                    arch, conv.dtype,
+                    conv, i, w, o, False, ni,
+                    slice_blk(bp, conv.p, 1),
+                    slice_blk(bq, conv.q, qblk),
+                    slice_blk(bc, conv.c, 16),
+                    slice_blk(bk, conv.k, kblk))
+                for bc in range(0, conv.c, 16)
+            ]
+            for bp in range(0, conv.p, 1)
+            for bq in range(0, conv.q, qblk)
+            for bk in range(0, conv.k, kblk)
+        ], bbox=(0, arch.nrows, col, col + ncols), randomize=False)
+
+    return wl
+
+

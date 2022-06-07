@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+import logging
 
 from ..common import *
 from .common import *
 
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Matmul(Operator):
@@ -23,6 +25,17 @@ class MatmulBwd(Matmul):
     def from_forward(mm : Matmul):
         return MatmulBwd(mm.dtype, False, mm.l, mm.m, mm.n, mm.k, mm.tr_a, mm.tr_b)
 
+    @property
+    def da(self) -> Matmul:
+        return Matmul(self.dtype, False, self.l, self.m, self.k, self.n, self.tr_a, not self.tr_b)
+
+    @property
+    def db(self) -> Matmul:
+        return Matmul(self.dtype, False, self.l, self.k, self.n, self.m, not self.tr_a, self.tr_b)
+
+    @property
+    def flops(self): return self.l * self.m * self.n * self.k * 2 * 2
+
 @dataclass(frozen=True)
 class Linear(Matmul): pass
 
@@ -42,8 +55,6 @@ class MatmulTile(M.WorkItemPerfectCompute):
     ms : slice
     ns : slice
     ks : slice
-    tr_a : bool
-    tr_b : bool
 
     @property
     def flops(self):
@@ -54,10 +65,10 @@ class MatmulTile(M.WorkItemPerfectCompute):
 
     @property
     def read_trace(self):
-        if not self.tr_a: yield from self.a[self.li, self.ms, self.ks]
+        if not self.mm.tr_a: yield from self.a[self.li, self.ms, self.ks]
         else: yield from self.a[self.li, self.ks, self.ms]
 
-        if not self.tr_b: yield from self.b[self.li, self.ks, self.ns]
+        if not self.mm.tr_b: yield from self.b[self.li, self.ks, self.ns]
         else: yield from self.b[self.li, self.ns, self.ks]
 
     @property
@@ -101,33 +112,60 @@ def place_matmul_naive(arch : Arch, mm : Matmul):
 
     return wl
 
-@M.register_placement('naive', FlatMeshArch, MatmulBwd)
-@M.register_placement('naive', FlatMeshArch, LinearBwd)
-@M.register_placement('naive', OracleArch, MatmulBwd)
-@M.register_placement('naive', OracleArch, LinearBwd)
-def place_matmul_bwd_naive(arch : Arch, mm : MatmulBwd):
-    tiles = [
+def flatmap_matmul(arch : Arch, mm : Matmul, wl : M.WorkList, a, b, c, bbox=None):
+    wl.flatmap_place([
         [
             MatmulTile(
                 arch, mm.dtype,
-                mm, li, bm, bn, bk,
-                min(mm.m - bm, 16), min(mm.n - bn, 8), min(mm.k - bk, 64),
-                mm.tr_a, mm.tr_b)
+                mm, a, b, c, False, li,
+                slice_blk(bm, mm.m, 16),
+                slice_blk(bn, mm.n, 8),
+                slice_blk(bk, mm.k, 64))
             for bk in range(0, mm.k, 64)
         ]
         for bm in range(0, mm.m, 16)
         for bn in range(0, mm.n, 8)
         for li in range(mm.l)
-    ]
+    ], bbox=bbox)
 
-    gwl = M.GlobalWorkList.from_arch(arch)
-    wi_per_tile = len(tiles) // arch.ntiles
-    off = 0
+@M.register_placement('flatmap', FlatMeshArch, Matmul)
+@M.register_placement('flatmap', FlatMeshArch, Linear)
+@M.register_placement('flatmap', OracleArch, Matmul)
+@M.register_placement('flatmap', OracleArch, Linear)
+def place_matmul_flatmap(arch : Arch, mm : Matmul):
+    l = mm.l
+    m = mm.m
+    n = mm.n
+    k = mm.k
 
-    for ti in range(arch.ntiles):
-        ntiles = wi_per_tile
-        if ti < (len(tiles) % arch.ntiles): ntiles += 1
-        gwl.tiles[ti] = list(itertools.chain(*tiles[off : off + ntiles]))
-        off += ntiles
+    a = M.Tensor(1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(3, mm.dtype, (l, m, n))
 
-    return gwl
+    wl = M.WorkList.from_arch(arch, [a, b, c])
+    flatmap_matmul(arch, mm, wl, a, b, c)
+
+    return wl
+
+@M.register_placement('flatmap', FlatMeshArch, MatmulBwd)
+@M.register_placement('flatmap', FlatMeshArch, LinearBwd)
+@M.register_placement('flatmap', OracleArch, MatmulBwd)
+@M.register_placement('flatmap', OracleArch, LinearBwd)
+def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd):
+    l = mm.l
+    m = mm.m
+    n = mm.n
+    k = mm.k
+
+    a = M.Tensor(1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(3, mm.dtype, (l, m, n))
+    da = M.Tensor(4, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    db = M.Tensor(5, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    dc = M.Tensor(6, mm.dtype, (l, m, n))
+
+    wl = M.WorkList.from_arch(arch, [a, b, c, da, db, dc])
+    flatmap_matmul(arch, mm.da, wl, dc, b, da, bbox=(0, arch.nrows, 0, arch.ncols // 2))
+    flatmap_matmul(arch, mm.db, wl, a, dc, db, bbox=(0, arch.nrows, arch.ncols // 2, arch.ncols))
+
+    return wl

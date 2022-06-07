@@ -1,5 +1,5 @@
 #include <pybind11/pybind11.h>
-
+#include <iostream>
 
 namespace py = pybind11;
 
@@ -10,12 +10,15 @@ private:
     const size_t nway;
     const size_t laddrbits;
 
+    size_t accesses;
+    size_t hits;
+
     std::vector<std::vector<std::pair<bool, uint64_t>>> tags;
     std::vector<size_t> mru;
 
 public:
     Cache(size_t _nset, size_t _nway, size_t _laddrbits) :
-        nset(_nset), nway(_nway), laddrbits(_laddrbits), tags()
+        nset(_nset), nway(_nway), laddrbits(_laddrbits), accesses(0), hits(0), tags()
     {
         for (size_t set = 0; set < nset; set++) {
             tags.push_back({});
@@ -27,9 +30,13 @@ public:
     }
 
     inline bool lookup(uint64_t addr) {
+        accesses++;
         const uint64_t line = (addr >> laddrbits) % nset;
         for (const auto& entry : tags[line]) {
-            if (entry.first && entry.second == addr) return true;
+            if (entry.first && entry.second == addr) {
+                hits++;
+                return true;
+            }
         }
         return false;
     }
@@ -56,6 +63,14 @@ public:
         mru[setid] = way;
     }
 
+    inline void reset() {
+        accesses = 0;
+        hits = 0;
+    }
+
+    inline size_t get_accesses() const { return accesses; }
+    inline size_t get_hits() const { return hits; }
+
 };
 
 
@@ -63,6 +78,9 @@ PYBIND11_MODULE(cache, m) {
     py::class_<Cache>(m, "Cache")
         .def(py::init<size_t, size_t, size_t>())
         .def("lookup", &Cache::lookup)
-        .def("insert", &Cache::insert);
+        .def("insert", &Cache::insert)
+        .def("get_accesses", &Cache::get_accesses)
+        .def("get_hits", &Cache::get_hits)
+        .def("reset", &Cache::reset);
 }
 

@@ -1,7 +1,10 @@
 from dataclasses import dataclass
+import logging
 
 from ..common import *
 from .common import *
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Router:
@@ -35,6 +38,7 @@ class Router:
 class Noc:
     arch : Arch
     routers : list[list[Router]]
+    ports_per_dir : int
 
     def __getitem__(self, coords : tuple[int, int]):
         return self.routers[coords[0]][coords[1]]
@@ -85,7 +89,7 @@ class Noc:
             for c in range(self.arch.ncols)
         ])
 
-        return max(max_out // 5, 1)
+        return max(max_out // self.ports_per_dir // 5, 1)
 
     @property
     def enb(self):
@@ -111,5 +115,5 @@ class Noc:
         return Noc(arch, [
             [Router(r, c) for c in range(arch.ncols)]
             for r in range(arch.nrows)
-        ])
+        ], arch.noc_ports_per_dir)
 

@@ -17,12 +17,7 @@ setup(
     long_description=open('README.md').read(),
     install_requires=[],
     ext_modules=[
-        Pybind11Extension(
-            'upcycle.model.cache',
-            ['upcycle/model/cache.cc'],
-            # Example: passing in the version to the compiled code
-            # define_macros = [('VERSION_INFO', __version__)],
-        ),
+        Pybind11Extension('upcycle.model.cache', ['upcycle/model/cache.cc']),
     ],
     zip_safe=False,
     python_requires=">=3.6",
