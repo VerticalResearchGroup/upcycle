@@ -30,7 +30,7 @@ def testmatmul(dtype, n=1):
 
 
 def testconv(dtype, n=1):
-    return Trace([ ops.Conv2D(dtype, True, n, 56, 56, 64, 56, 56, 64, 1, 1, 1) ])
+    return Trace([ ops.Conv2D(dtype, True, n, 224, 224, 3, 112, 112, 64, 7, 7, 2) ])
 
 def bertlarge(dtype, n=1, s=512):
     return Trace([

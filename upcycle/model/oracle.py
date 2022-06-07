@@ -3,7 +3,6 @@ import numpy as np
 import logging
 
 from ..common import *
-from .. import ops
 
 from .common import *
 from . import cache
@@ -26,7 +25,7 @@ class OracleSoc(Soc):
 
     def tile_coords(self, tid):
         assert tid >= 0 and tid < self.arch.ntiles
-        return (tid // self.arch.ncol), (tid % self.arch.ncol)
+        return (tid // self.arch.ncols), (tid % self.arch.ncols)
 
     def addr_llc_coords(self, addr : int):
         line = addr >> 6
@@ -36,16 +35,19 @@ class OracleSoc(Soc):
         else:
             return self.tile_coords(tid)
 
-    def simulate(self, op : ops.Operator):
-        gwl = place_op(self.placement_mode, self.arch, op)
+    def simulate(self, op : Operator):
+        wl = place_op(self.placement_mode, self.arch, op)
         l1_nway = int(self.l1_assoc)
         l1_nset = int(self.l1_capacity / 64 / l1_nway)
-        l1 = [cache.Cache(l1_nset, l1_nway, 6) for _ in range(self.arch.ntiles)]
+        l1 = [
+            [cache.Cache(l1_nset, l1_nway, 6) for _ in range(self.arch.ncols)]
+            for _ in range(self.arch.nrows)
+        ]
 
         compute_cyc = 0
-        logging.debug(f'Simulating {gwl.nsteps} steps with {gwl.flops} flops...')
+        logging.debug(f'Simulating {wl.nsteps} steps with {wl.flops} flops...')
 
-        for step in range(gwl.nsteps):
+        for step in range(wl.nsteps):
             logging.debug(f'Step {step}')
             net = noc.Noc.from_arch(self.arch)
             self.nocs.append(net)
@@ -53,14 +55,17 @@ class OracleSoc(Soc):
 
             max_exec_cyc = 0
 
-            for tid, tile in enumerate(gwl.tiles):
-                if step >= len(tile): continue
-                max_exec_cyc = max(tile[step].exec_lat, max_exec_cyc)
-                for l in tile[step].read_trace:
-                    if l1[tid].lookup(l): continue
-                    l1[tid].insert(l)
-                    if l not in oracle_map: oracle_map[l] = []
-                    oracle_map[l].append(tid)
+            # for tid, tile in enumerate(wl.flattiles):
+            for r in range(self.arch.nrows):
+                for c in range(self.arch.ncols):
+                    tile = wl[r, c]
+                    if step >= len(tile): continue
+                    max_exec_cyc = max(tile[step].exec_lat, max_exec_cyc)
+                    for l in tile[step].read_trace:
+                        if l1[r][c].lookup(l): continue
+                        l1[r][c].insert(l)
+                        if l not in oracle_map: oracle_map[l] = []
+                        oracle_map[l].append((r, c))
 
             dsts = [len(d) for _, d in oracle_map.items()]
             if len(dsts) > 0:
@@ -71,13 +76,12 @@ class OracleSoc(Soc):
                 r, c = self.addr_llc_coords(line)
                 net[r, c].inject += 1
 
-                for dest in dests:
-                    dr, dc = self.tile_coords(dest)
+                for (dr, dc) in dests:
                     net[dr, dc].eject += 1
 
                 routes = [
-                    net.get_route((r, c), self.tile_coords(tid))
-                    for tid in dests
+                    net.get_route((r, c), (dr, dc))
+                    for (dr, dc) in dests
                 ]
 
                 seen_hops = set[(noc.Router, noc.Router)]()

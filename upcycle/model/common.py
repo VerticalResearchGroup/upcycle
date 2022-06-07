@@ -2,31 +2,9 @@ from dataclasses import dataclass
 from typing import Iterator
 import numpy as np
 import itertools
+import functools
 
 from ..common import *
-from .. import ops
-
-@dataclass
-class TimeSpan:
-    ti : int
-    tf : int
-
-    def move(self, o : int):
-        self.ti += o
-        self.tf += o
-
-@dataclass
-class WorkBlock:
-    issue : TimeSpan
-    read : TimeSpan
-    exe : TimeSpan
-
-    def __iadd__(self, other):
-        other : WorkBlock
-        off = other.issue.ti - self.issue.tf
-        other.issue.move(off)
-        other.read.move(off)
-        other.exe.move(off)
 
 @dataclass(frozen=True)
 class Tensor:
@@ -42,6 +20,8 @@ class Tensor:
             tuple(
                 int(np.prod(self.shape[i+1:]) * Dtype.sizeof(self.dtype))
                 for i in range(len(self.shape))))
+
+        object.__setattr__(self, 'linecache', {})
 
     def _gen_offs(self, i, d):
         if isinstance(d, int):
@@ -62,16 +42,32 @@ class Tensor:
                 yield from map(
                     lambda i: i + off, self._gen_ids_rec(di + 1, idx))
 
+    @staticmethod
+    def hashidx(idx):
+        def h(x):
+            if isinstance(x, slice): return hash((x.start, x.stop, x.step))
+            else: return hash(x)
+        return hash(tuple(h(x) for x in idx))
+
     def __getitem__(self, idx):
         assert len(self.shape) == len(idx)
         upper = self.oid << 32
         last = None
+        lines = []
+
+        key = self.hashidx(idx) % 4096
+        if key in self.linecache and self.linecache[key][0] == idx:
+            return self.linecache[key][1]
 
         for off in self._gen_ids_rec(0, idx):
             line = (upper | off) & ~0x3F
             if last is not None and line == last: continue
             last = line
-            yield line
+            lines.append(line)
+
+        self.linecache[key] = (idx, lines)
+
+        return lines
 
 
 @dataclass(frozen=True)
@@ -99,19 +95,64 @@ class WorkItemPerfectCompute(WorkItem):
 
 
 @dataclass
-class GlobalWorkList:
-    tiles : list[list[WorkItem]]
-
-    @staticmethod
-    def from_arch(arch : Arch):
-        return GlobalWorkList([list() for _ in range(arch.ntiles)])
+class WorkList:
+    arch : Arch
+    tensors : list[Tensor]
+    tiles : list[list[list[WorkItem]]]
 
     @property
-    def nsteps(self): return max(map(len, self.tiles))
+    def flattiles(self):
+        for row in self.tiles:
+            for tile in row:
+                yield tile
+
+    @property
+    def workitems(self):
+        for row in self.tiles:
+            for tile in row:
+                yield from tile
+
+    @staticmethod
+    def from_arch(arch : Arch, tensors : list[Tensor]):
+        return WorkList(
+            arch,
+            tensors,
+            [[list() for _ in range(arch.ncols)] for _ in range(arch.nrows)])
+
+
+    def contract1d_place(self, row, vtiles : list[list[WorkItem]]):
+        wi_per_col = len(vtiles) // self.arch.nrows
+        off = 0
+
+        for col in range(self.arch.ncols):
+            ntiles = wi_per_col
+            if col < (len(vtiles) % self.arch.ncols): ntiles += 1
+            tl = self[row, col]
+            tl += list(itertools.chain(*vtiles[off : off + ntiles]))
+            off += ntiles
+
+
+    def contract2d_place(self, vtiles : list[list[list[WorkItem]]]):
+        wi_per_row = len(vtiles) // self.arch.nrows
+        off = 0
+
+        for row in range(self.arch.nrows):
+            ntiles = wi_per_row
+            if row < (len(vtiles) % self.arch.nrows): ntiles += 1
+            for row_i in range(off, off + ntiles):
+                self.contract1d_place(row, vtiles[row_i])
+            off += ntiles
+
+    @property
+    def nsteps(self): return max(map(len, self.flattiles))
 
     @property
     def flops(self):
-        return sum(sum(map(lambda x: x.flops, tile)) for tile in self.tiles)
+        return sum(map(lambda x: x.flops, self.workitems))
+
+    def __getitem__(self, idx):
+        r, c = idx
+        return self.tiles[r][c]
 
 placement_funcs = {}
 
@@ -121,7 +162,7 @@ def register_placement(mode, archclass, opclass):
         return x
     return decorator
 
-def place_op(mode : str, arch : Arch, op : ops.Operator) -> GlobalWorkList:
+def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
     global placement_funcs
     return placement_funcs[(mode, type(arch), type(op))](arch, op)
 
@@ -129,7 +170,7 @@ class Soc:
     def __init__(self, arch : Arch):
         self.arch = arch
 
-    def simulate(self, op : ops.Operator): raise NotImplementedError()
+    def simulate(self, op : Operator): raise NotImplementedError()
 
     def noc(self, step : int): raise NotImplementedError()
 
@@ -141,6 +182,10 @@ class Soc:
 
     @property
     def placement_mode(self): return 'naive'
+
+    @property
+    def total_hops(self):
+        return sum(self.noc(step).total_hops for step in range(self.nsteps))
 
 
 socs = {}

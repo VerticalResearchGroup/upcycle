@@ -28,34 +28,29 @@ class Arch:
     freq : float
     vbits : int
     macs : int
+    nrows : int
+    ncols : int
 
     @property
-    def ntiles(self): raise NotImplementedError()
+    def ntiles(self): return self.nrows * self.ncols
 
     def vlen(self, dtype : Dtype): return self.vbits / 8 / Dtype.sizeof(dtype)
 
     def peak_opc(self, dtype : Dtype):
         return self.vlen(dtype) * self.macs * 2
 
-@dataclass(order=True, frozen=True)
-class FlatMeshArch(Arch):
-    nrow : int
-    ncol : int
+
+@dataclass(frozen=True)
+class Operator:
+    dtype : Dtype
+    train : bool
 
     @property
-    def ntiles(self): return self.nrow * self.ncol
+    def flops(self): raise NotImplementedError()
 
 @dataclass(order=True, frozen=True)
-class OracleArch(FlatMeshArch): pass
+class FlatMeshArch(Arch): pass
 
 @dataclass(order=True, frozen=True)
-class ClusteredMeshArch(Arch):
-    nrow : int
-    ncol : int
-    cluster_size : int
+class OracleArch(Arch): pass
 
-    @property
-    def ntiles(self): return self.nrow * self.ncol * self.cluster_size
-
-    @property
-    def nclusters(self): return self.nrow * self.ncol

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 from ..common import *
-from .. import ops
 
 from .common import *
 from . import cache
@@ -24,7 +23,7 @@ class FlatMeshSoc(Soc):
 
     def tile_coords(self, tid):
         assert tid >= 0 and tid < self.arch.ntiles
-        return (tid // self.arch.ncol), (tid % self.arch.ncol)
+        return (tid // self.arch.ncols), (tid % self.arch.ncols)
 
     def addr_llc_coords(self, addr : int):
         line = addr >> 6
@@ -34,7 +33,7 @@ class FlatMeshSoc(Soc):
         else:
             return self.tile_coords(tid)
 
-    def simulate(self, op : ops.Operator):
+    def simulate(self, op : Operator):
         gwl = place_op(self.placement_mode, self.arch, op)
         l1_nway = int(self.l1_assoc)
         l1_nset = int(self.l1_capacity / 64 / l1_nway)

@@ -23,10 +23,10 @@ class Router:
 
 
     @property
-    def num_in(self): return self.in_north + self.in_south + self.in_east + self.in_west
+    def num_in(self): return self.in_north + self.in_south + self.in_east + self.in_west + self.inject
 
     @property
-    def num_out(self): return self.out_north + self.out_south + self.out_east + self.out_west
+    def num_out(self): return self.out_north + self.out_south + self.out_east + self.out_west + self.eject
 
     def __hash__(self): return hash((self.r, self.c))
 
@@ -81,28 +81,35 @@ class Noc:
     def latency(self):
         max_out = max([
             self[r, c].num_out
-            for r in range(self.arch.nrow)
-            for c in range(self.arch.ncol)
+            for r in range(self.arch.nrows)
+            for c in range(self.arch.ncols)
         ])
 
-        return max(max_out // 4, 1)
+        return max(max_out // 5, 1)
 
     @property
     def enb(self):
         num_reqs = sum([
             self[r, c].inject
-            for r in range(self.arch.nrow)
-            for c in range(self.arch.ncol)
+            for r in range(self.arch.nrows)
+            for c in range(self.arch.ncols)
         ])
 
         read_bytes = num_reqs * 64
         return read_bytes / self.latency
 
+    @property
+    def total_hops(self):
+        return sum([
+            self[r, c].num_out
+            for r in range(self.arch.nrows)
+            for c in range(self.arch.ncols)
+        ])
 
     @staticmethod
     def from_arch(arch : Arch):
         return Noc(arch, [
-            [Router(r, c) for c in range(arch.ncol)]
-            for r in range(arch.nrow)
+            [Router(r, c) for c in range(arch.ncols)]
+            for r in range(arch.nrows)
         ])
 
