@@ -144,10 +144,11 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
                 Conv2DTile(
                     arch, conv.dtype,
                     conv, i, w, o, False, ni,
-                    slice_blk(bp, conv.p, 1),
-                    slice_blk(bq, conv.q, qblk),
-                    slice_blk(bc, conv.c, 16),
-                    slice_blk(bk, conv.k, kblk))
+                    Slice.blk(bp, conv.p, 1),
+                    Slice.blk(bq, conv.q, qblk),
+                    Slice.blk(bc, conv.c, 16),
+                    Slice.blk(bk, conv.k, kblk),
+                    conv.tr_w)
                 for bc in range(0, conv.c, 16)
             ]
             for bp in range(0, conv.p, 1)

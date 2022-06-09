@@ -59,9 +59,9 @@ class MatmulTile(M.WorkItemPerfectCompute):
     @property
     def flops(self):
         return \
-            slice_len(self.ms, self.mm.m) * \
-            slice_len(self.ns, self.mm.n) * \
-            slice_len(self.ks, self.mm.k) * 2
+            Slice.blk(self.ms, self.mm.m) * \
+            Slice.blk(self.ns, self.mm.n) * \
+            Slice.blk(self.ks, self.mm.k) * 2
 
     @property
     def read_trace(self):
@@ -98,9 +98,9 @@ def place_matmul_naive(arch : Arch, mm : Matmul):
                 MatmulTile(
                     arch, mm.dtype,
                     mm, a, b, c, False, li,
-                    slice_blk(bm, mm.m, 16),
-                    slice_blk(bn, mm.n, 8),
-                    slice_blk(bk, mm.k, 64),
+                    Slice.blk(bm, mm.m, 16),
+                    Slice.blk(bn, mm.n, 8),
+                    Slice.blk(bk, mm.k, 64),
                     mm.tr_a, mm.tr_b)
                 for bk in range(0, mm.k, 64)
             ]
@@ -118,9 +118,9 @@ def flatmap_matmul(arch : Arch, mm : Matmul, wl : M.WorkList, a, b, c, bbox=None
             MatmulTile(
                 arch, mm.dtype,
                 mm, a, b, c, False, li,
-                slice_blk(bm, mm.m, 16),
-                slice_blk(bn, mm.n, 8),
-                slice_blk(bk, mm.k, 64))
+                Slice.blk(bm, mm.m, 16),
+                Slice.blk(bn, mm.n, 8),
+                Slice.blk(bk, mm.k, 64))
             for bk in range(0, mm.k, 64)
         ]
         for bm in range(0, mm.m, 16)

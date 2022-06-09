@@ -5,23 +5,30 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def slice_mul(s, c):
-    start = None if s.start is None else s.start * c
-    stop = None if s.stop is None else s.stop * c
-    return slice(start, stop, None)
 
-def slice_add(s, c):
-    start = None if s.start is None else s.start + c
-    stop = None if s.stop is None else s.stop + c
-    return slice(start, stop, None)
+@dataclass(frozen=True, order=True)
+class Slice:
+    start : int
+    stop : int
 
-def slice_len(s, n):
-    start = 0 if s.start is None else s.start
-    stop = n if s.stop is None else s.stop
-    return stop - start
+    @staticmethod
+    def from_pyslice(s : slice, n : int) -> 'Slice':
+        return Slice(
+            s.start if s.start is not None else 0,
+            s.stop if s.stop is not None else n)
 
-def slice_blk(start, n, blk):
-    return slice(start, start + min(n - start, blk))
+    @staticmethod
+    def blk(start : int, n : int, blk : int):
+        return Slice(start, start + min(n - start, blk))
+
+    def __mul__(self, c : int):
+        return Slice(self.start * c, self.stop * c)
+
+    def __add__(self, c : int):
+        return Slice(self.start + c, self.stop + c)
+
+    def __len__(self):
+        return self.stop - self.start
 
 class Dtype(IntEnum):
     I8 = 1

@@ -3,6 +3,7 @@ from random import shuffle
 from typing import Iterator
 import numpy as np
 import itertools
+import functools
 import logging
 
 from ..common import *
@@ -29,12 +30,8 @@ class Tensor:
     def _gen_offs(self, i, d):
         if isinstance(d, int):
             yield d * self.strides[i]
-        elif isinstance(d, slice):
-            start = 0 if d.start is None else d.start
-            stop = self.shape[i] if d.stop is None else d.stop
-            yield from map(
-                lambda x: x * self.strides[i], range(start, stop, d.step))
-
+        elif isinstance(d, Slice):
+            yield from map(lambda x: x * self.strides[i], range(d.start, d.stop))
 
     def _gen_ids_rec(self, di, idx):
         d = idx[di]
@@ -42,36 +39,31 @@ class Tensor:
             yield from self._gen_offs(di, d)
         else:
             for off in self._gen_offs(di, d):
-                yield from map(
-                    lambda i: i + off, self._gen_ids_rec(di + 1, idx))
+                yield from map(lambda i: i + off, self._gen_ids_rec(di + 1, idx))
 
-    @staticmethod
-    def hashidx(idx):
-        def h(x):
-            if isinstance(x, slice): return hash((x.start, x.stop, x.step))
-            else: return hash(x)
-        return hash(tuple(h(x) for x in idx))
-
-    def __getitem__(self, idx):
+    @functools.lru_cache
+    def _getlines(self, idx):
         assert len(self.shape) == len(idx)
         upper = self.oid << 32
         last = None
         lines = []
 
-        key = self.hashidx(idx) % 4096
-        if key in self.linecache and self.linecache[key][0] == idx:
-            return self.linecache[key][1]
-
         for off in self._gen_ids_rec(0, idx):
             line = (upper | off) & ~0x3F
             if last is not None and line == last: continue
             last = line
-            # yield line
             lines.append(line)
 
-        self.linecache[key] = (idx, lines)
-
         return lines
+
+    def __getitem__(self, _idx):
+        def _convert_slice(x):
+            (i, s) = x
+            if isinstance(s, int): return s
+            elif isinstance(s, slice):
+                return Slice.from_pyslice(s, self.shape[i])
+        idx = tuple(map(_convert_slice, enumerate(_idx)))
+        return self._getlines(idx)
 
 
 @dataclass(frozen=True)
