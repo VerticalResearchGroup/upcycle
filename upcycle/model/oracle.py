@@ -94,7 +94,7 @@ class OracleSoc(Soc):
                 logger.debug(f'+ Avg exec cycles: {np.average(exec_cyc)}')
                 logger.debug(f'+ Idle tiles: {idle_tiles}')
                 logger.debug(f'+ Step flops: {flops}')
-                logger.debug(f'+ L1 Hit Rate: {hits} / {accesses} = {np.round(hits / accesses, 2) * 100}%')
+                logger.debug(f'+ L1 Hit Rate: {hits} / {accesses} = {np.round(hits / max(accesses, 1), 2) * 100}%')
 
                 dsts = [len(d) for _, d in oracle_map.items()]
                 if len(dsts) > 0:

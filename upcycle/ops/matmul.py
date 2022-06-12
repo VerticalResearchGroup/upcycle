@@ -34,7 +34,7 @@ class MatmulBwd(Matmul):
         return Matmul(self.dtype, False, self.l, self.k, self.n, self.m, not self.tr_a, self.tr_b)
 
     @property
-    def flops(self): return self.l * self.m * self.n * self.k * 2 * 2
+    def flops(self): return super().flops * 2
 
 @dataclass(frozen=True)
 class Linear(Matmul): pass
@@ -59,9 +59,9 @@ class MatmulTile(M.WorkItemPerfectCompute):
     @property
     def flops(self):
         return \
-            Slice.blk(self.ms, self.mm.m) * \
-            Slice.blk(self.ns, self.mm.n) * \
-            Slice.blk(self.ks, self.mm.k) * 2
+            len(self.ms) * \
+            len(self.ns) * \
+            len(self.ks) * 2
 
     @property
     def read_trace(self):

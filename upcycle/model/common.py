@@ -27,11 +27,14 @@ class Tensor:
 
         object.__setattr__(self, 'linecache', {})
 
+        assert np.prod(self.shape) * Dtype.sizeof(self.dtype) < 2**32, \
+            f'Address space doesn\'t support Tensors > 4GB!'
+
     def _gen_offs(self, i, d):
         if isinstance(d, int):
             yield d * self.strides[i]
         elif isinstance(d, Slice):
-            yield from map(lambda x: x * self.strides[i], range(d.start, d.stop))
+            yield from map(lambda x: x * self.strides[i], d.indices)
 
     def _gen_ids_rec(self, di, idx):
         d = idx[di]
@@ -60,8 +63,10 @@ class Tensor:
         def _convert_slice(x):
             (i, s) = x
             if isinstance(s, int): return s
+            elif isinstance(s, Slice): return s
             elif isinstance(s, slice):
                 return Slice.from_pyslice(s, self.shape[i])
+            else: assert False, f'Invalid slice: {s}'
         idx = tuple(map(_convert_slice, enumerate(_idx)))
         return self._getlines(idx)
 

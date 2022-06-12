@@ -11,4 +11,4 @@ for name, stats in U.nvdb.a100_perf.items():
     off_perf = stats.infer_offline_perf
     off_eff = np.round(off_perf * app_flops / peak * 100, 2)
 
-    print(f'{name}: {app_flops} flops, online: {on_eff}%, offline: {off_eff}%')
+    print(f'{name}: {app_flops} flops, online: {on_perf}({on_eff}%), offline: {off_perf}({off_eff}%)')

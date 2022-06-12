@@ -10,8 +10,9 @@ import argparse
 logging._srcfile = None
 logger = logging.getLogger()
 ch = logging.StreamHandler(sys.stdout)
-ch.setFormatter(U.logutils.CustomFormatter())
-logging.basicConfig(level=logging.INFO, handlers=[ch])
+fmt = U.logutils.CustomFormatter()
+ch.setFormatter(fmt)
+logging.basicConfig(level=logging.DEBUG, handlers=[ch], filename='log.txt')
 
 def simulate_layer(op : U.ops.Operator, soc_args):
     soc = U.model.make_soc(arch, **soc_args)
@@ -72,24 +73,45 @@ def simulate_app_par(app : U.apps.Trace, soc_args):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Simulate an application')
+    parser.add_argument('--arch', type=str, default='2e9, 512, 1, 32, 64, 1')
+    parser.add_argument('-d', '--dtype', type=str, default='I8')
+    parser.add_argument('-t', '--train', action='store_true')
+    parser.add_argument('-i', '--infer', action='store_true')
+    parser.add_argument('-a', '--app', type=str, default='resnet50')
+    parser.add_argument('-b', '--batch', type=int, default=1)
+    parser.add_argument('-m', '--placement-mode', type=str, default='flatmap')
+    parser.add_argument('--l1-capacity', type=int, default=64*1024)
+    parser.add_argument('--l1-assoc', type=int, default=16)
+    parser.add_argument('-p', '--parallel', action='store_true')
+
+    args = parser.parse_args()
+    assert not (args.train and args.infer)
+    assert args.train or args.infer
+
     arch = U.OracleArch(2e9, 512, 1, 32, 64, 1)
-    # app = U.apps.bertbase(U.Dtype.I8, n=64)
-    app = U.apps.resnet50(U.Dtype.I8, n=16)
-    # app = U.apps.rnnt_infer(U.Dtype.FP16, n=64, il=16)
-    # app = U.apps.Trace([app.oplist[0]])
-    app.infer()
+    dtype = U.Dtype.from_str(args.dtype)
 
+    if args.infer:
+        app = U.apps.infer_apps_by_name[args.app](dtype, n=args.batch)
+        app.infer()
 
-    logging.info(f'Arch: {arch}')
-    logging.debug(f'Arch Peak ops/cyc/core: {arch.peak_opc(U.Dtype.I8)}')
+    else:
+        app = U.apps.train_apps_by_name[args.app](dtype, n=args.batch)
+        app.train()
+
+    logging.debug(f'Arch: {arch}')
+    logging.debug(f'App: {app}')
+    logging.debug(f'Arch Peak ops/cyc/core: {arch.peak_opc(dtype)}')
     logging.debug(f'App Flops: {app.flops}')
 
-    soc_args = dict(placement_mode='flatmap', l1_capacity=64*1024, l1_assoc=16)
+    soc_args = dict(
+        placement_mode=args.placement_mode,
+        l1_capacity=args.l1_capacity,
+        l1_assoc=args.l1_assoc)
 
-    if len(sys.argv) > 1 and sys.argv[1] == '-p':
-        time_ns, socs = simulate_app_par(app, soc_args)
-    else:
-        time_ns, socs = simulate_app(app, soc_args)
+    if args.parallel: time_ns, socs = simulate_app_par(app, soc_args)
+    else: time_ns, socs = simulate_app(app, soc_args)
 
     cycles = sum(soc.cycles for soc in socs)
     logging.info('App Summary:')
@@ -97,4 +119,4 @@ if __name__ == '__main__':
     logging.info(f'+ Total Latency: {cycles} cyc')
     logging.info(f'+ Compute: {app.flops / cycles} flops/cyc')
     logging.info(f'+ Compute: {app.flops / cycles / arch.ntiles} flops/cyc/core')
-    logging.info(f'+ Efficiency: {app.flops / cycles / arch.ntiles / arch.peak_opc(U.Dtype.I8) * 100} %')
+    logging.info(f'+ Efficiency: {app.flops / cycles / arch.ntiles / arch.peak_opc(dtype) * 100} %')

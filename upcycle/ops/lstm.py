@@ -1,9 +1,12 @@
 from dataclasses import dataclass
+import logging
 
 from ..common import *
 from .common import *
 
 from . import matmul
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Lstm(Operator):
@@ -34,11 +37,11 @@ class LstmTile(M.WorkItemPerfectCompute):
 
     si : int
     ni : int
-    hs : slice
+    hs : Slice
 
     @property
     def flops(self):
-        return 4 * slice_len(self.hs, self.lstm.h) * (self.lstm.h + self.lstm.d) * 2
+        return 4 * len(self.hs) * (self.lstm.h + self.lstm.d) * 2
 
     @property
     def read_trace(self):
@@ -52,25 +55,25 @@ class LstmTile(M.WorkItemPerfectCompute):
             yield from self.h[self.si, :, self.ni]
 
         if not self.lstm.tr_wu:
-            yield from self.w[:, slice_add(self.hs, self.lstm.h * 0)]
-            yield from self.w[:, slice_add(self.hs, self.lstm.h * 1)]
-            yield from self.w[:, slice_add(self.hs, self.lstm.h * 2)]
-            yield from self.w[:, slice_add(self.hs, self.lstm.h * 3)]
+            yield from self.w[:, self.hs + (self.lstm.h * 0)]
+            yield from self.w[:, self.hs + (self.lstm.h * 1)]
+            yield from self.w[:, self.hs + (self.lstm.h * 2)]
+            yield from self.w[:, self.hs + (self.lstm.h * 3)]
 
-            yield from self.u[:, slice_add(self.hs, self.lstm.h * 0)]
-            yield from self.u[:, slice_add(self.hs, self.lstm.h * 1)]
-            yield from self.u[:, slice_add(self.hs, self.lstm.h * 2)]
-            yield from self.u[:, slice_add(self.hs, self.lstm.h * 3)]
+            yield from self.u[:, self.hs + (self.lstm.h * 0)]
+            yield from self.u[:, self.hs + (self.lstm.h * 1)]
+            yield from self.u[:, self.hs + (self.lstm.h * 2)]
+            yield from self.u[:, self.hs + (self.lstm.h * 3)]
         else:
-            yield from self.w[slice_add(self.hs, self.lstm.h * 0), :]
-            yield from self.w[slice_add(self.hs, self.lstm.h * 1), :]
-            yield from self.w[slice_add(self.hs, self.lstm.h * 2), :]
-            yield from self.w[slice_add(self.hs, self.lstm.h * 3), :]
+            yield from self.w[self.hs + (self.lstm.h * 0), :]
+            yield from self.w[self.hs + (self.lstm.h * 1), :]
+            yield from self.w[self.hs + (self.lstm.h * 2), :]
+            yield from self.w[self.hs + (self.lstm.h * 3), :]
 
-            yield from self.u[slice_add(self.hs, self.lstm.h * 0), :]
-            yield from self.u[slice_add(self.hs, self.lstm.h * 1), :]
-            yield from self.u[slice_add(self.hs, self.lstm.h * 2), :]
-            yield from self.u[slice_add(self.hs, self.lstm.h * 3), :]
+            yield from self.u[self.hs + (self.lstm.h * 0), :]
+            yield from self.u[self.hs + (self.lstm.h * 1), :]
+            yield from self.u[self.hs + (self.lstm.h * 2), :]
+            yield from self.u[self.hs + (self.lstm.h * 3), :]
 
 
     @property
@@ -81,6 +84,9 @@ class LstmTile(M.WorkItemPerfectCompute):
 @M.register_placement('flatmap', FlatMeshArch, Lstm)
 @M.register_placement('flatmap', OracleArch, Lstm)
 def place_lstm_flatmap(arch : Arch, lstm : Lstm):
+    logger.debug(f'=== Place LSTM ===')
+    logger.debug(f'+ LSTM: {lstm}')
+
     n = lstm.n
     s = lstm.s
     d = lstm.d
@@ -94,19 +100,28 @@ def place_lstm_flatmap(arch : Arch, lstm : Lstm):
 
     wl = M.WorkList.from_arch(arch, [tc, tx, th, tw, tu])
 
-    hblk = 1024
+    hblk = 128
+    rows_per_batch = h / hblk
+    col_height = arch.nrows
+    while col_height > rows_per_batch: col_height //= 2
+    batch_per_col = arch.nrows // col_height
+
+    logger.debug(f'+ hblk={hblk}')
 
     for si in range(s):
+        logger.debug(f'+ si={si}')
         for ni in range(n):
-            col = ni % arch.ncols
+            col = int((ni // batch_per_col) % arch.ncols)
+            row = int((ni % batch_per_col) * col_height)
+            logger.debug(f'    + ni={ni}, bbox={(row, row + col_height, col, col + 1)}')
             wl.flatmap_place([
                 [
                     LstmTile(
                         arch, lstm.dtype, lstm, False,
                         tc, tx, th, tw, tu,
-                        si, ni, slice_blk(hb, h, hblk))
+                        si, ni, Slice.blk(hb, h, hblk))
                 ]
                 for hb in range(0, h, hblk)
-            ], bbox=(0, arch.nrows, col, col + 1))
+            ], bbox=(row, row + col_height, col, col + 1))
 
     return wl
