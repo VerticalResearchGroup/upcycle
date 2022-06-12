@@ -12,64 +12,66 @@ logger = logging.getLogger()
 ch = logging.StreamHandler(sys.stdout)
 fmt = U.logutils.CustomFormatter()
 ch.setFormatter(fmt)
-logging.basicConfig(level=logging.DEBUG, handlers=[ch], filename='log.txt')
+logging.basicConfig(level=logging.INFO, handlers=[ch])
 
-def simulate_layer(op : U.ops.Operator, soc_args):
-    soc = U.model.make_soc(arch, **soc_args)
+def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     logger.debug(f'Simulating {op}...')
-    soc.simulate(op)
+    result = U.model.simulate(arch, op, **sim_kwargs)
     logger.debug(f'Finished {op}')
-    return soc
+    return result
 
-def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, soc, time_ns=None):
+def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
     blue = '\x1b[38;5;39m'
     green = '\033[92m'
     reset = '\x1b[0m'
-    gops = int(op.flops / soc.cycles * arch.freq / 1e9)
-    eff = np.round(op.flops / soc.cycles / arch.ntiles / arch.peak_opc(U.Dtype.I8) * 100, 2)
+    gops = int(op.flops / result.cycles * arch.freq / 1e9)
+    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(U.Dtype.I8) * 100, 2)
     logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
-    if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
-    logger.info(f'+ Latency: {int(soc.cycles)} cyc, Hops: {soc.total_hops}')
-    logger.info(f'+ Compute: {gops} Gops ({blue}Efficiency: {eff} %{reset})')
+    if details:
+        if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
+        logger.info(f'+ Latency: {int(result.cycles)} cyc, Hops: {np.sum(result.traffic)}')
+        logger.info(f'+ Compute: {gops} Gops ({blue}Efficiency: {eff} %{reset})')
 
 
-def simulate_app(app : U.apps.Trace, soc_args):
-    socs = []
+def simulate_app(arch : U.Arch, app : U.apps.Trace, soc_args):
+    layers = []
     cache = {}
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()
         if op not in cache:
-            soc = simulate_layer(op, soc_args)
-            cache[op] = soc
+            result = simulate_layer(arch, op, soc_args)
+            cache[op] = result
+            hit = False
         else:
-            soc = cache[op]
+            result = cache[op]
+            hit = True
 
-        socs.append(soc)
+        layers.append(result)
 
         t1 = time.perf_counter_ns()
-        log_layer(arch, app, i, op, soc, t1 - t0)
+        log_layer(arch, app, i, op, result, t1 - t0, details=not hit)
 
     tt1 = time.perf_counter_ns()
-    return tt1 - tt0, socs
+    return tt1 - tt0, layers
 
-def simulate_app_par(app : U.apps.Trace, soc_args):
+def simulate_app_par(arch : U.Arch, app : U.apps.Trace, soc_args):
     pool = multiprocessing.Pool(16)
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
-    unique_socs = pool.map(
-        functools.partial(simulate_layer, soc_args=soc_args), unique_ops)
+    unique_results = pool.map(
+        functools.partial(simulate_layer, arch, soc_args=soc_args), unique_ops)
 
-    cache = {op: soc for op, soc in zip(unique_ops, unique_socs)}
+    cache = {op: result for op, result in zip(unique_ops, unique_results)}
     tt1 = time.perf_counter_ns()
 
-    socs = []
+    layers = []
     for i, op in enumerate(app.oplist):
-        soc = cache[op]
-        socs.append(soc)
-        log_layer(arch, app, i, op, soc)
+        result = cache[op]
+        layers.append(result)
+        log_layer(arch, app, i, op, result)
 
-    return tt1 - tt0, socs
+    return tt1 - tt0, layers
 
 
 if __name__ == '__main__':
@@ -84,10 +86,15 @@ if __name__ == '__main__':
     parser.add_argument('--l1-capacity', type=int, default=64*1024)
     parser.add_argument('--l1-assoc', type=int, default=16)
     parser.add_argument('-p', '--parallel', action='store_true')
+    parser.add_argument('-v', '--verbose', action='store_true')
 
     args = parser.parse_args()
     assert not (args.train and args.infer)
     assert args.train or args.infer
+
+    if args.verbose:
+        assert not args.parallel, f'Cannot debug in parallel'
+        logger.setLevel(logging.DEBUG)
 
     arch = U.OracleArch(2e9, 512, 1, 32, 64, 1)
     dtype = U.Dtype.from_str(args.dtype)
@@ -105,15 +112,15 @@ if __name__ == '__main__':
     logging.debug(f'Arch Peak ops/cyc/core: {arch.peak_opc(dtype)}')
     logging.debug(f'App Flops: {app.flops}')
 
-    soc_args = dict(
+    sim_args = dict(
         placement_mode=args.placement_mode,
         l1_capacity=args.l1_capacity,
         l1_assoc=args.l1_assoc)
 
-    if args.parallel: time_ns, socs = simulate_app_par(app, soc_args)
-    else: time_ns, socs = simulate_app(app, soc_args)
+    if args.parallel: time_ns, layers = simulate_app_par(arch, app, sim_args)
+    else: time_ns, layers = simulate_app(arch, app, sim_args)
 
-    cycles = sum(soc.cycles for soc in socs)
+    cycles = sum(result.cycles for result in layers)
     logging.info('App Summary:')
     logging.info(f'+ Simulation time: {time_ns / 1e9} s')
     logging.info(f'+ Total Latency: {cycles} cyc')

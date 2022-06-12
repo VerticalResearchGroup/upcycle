@@ -1,10 +1,23 @@
 from dataclasses import dataclass
+from enum import IntEnum
 import logging
 
 from ..common import *
 from .common import *
 
 logger = logging.getLogger(__name__)
+
+class NocDir(IntEnum):
+    OUT_NORTH = 0
+    OUT_SOUTH = 1
+    OUT_EAST = 2
+    OUT_WEST = 3
+    INJECT = 4
+    EJECT = 5
+    DIRMAX = 6
+
+def zero_traffic(arch : Arch, nsteps : int):
+    return np.zeros((nsteps, arch.nrows, arch.ncols, NocDir.DIRMAX), dtype=np.uint32)
 
 @dataclass
 class Router:
@@ -14,22 +27,10 @@ class Router:
     inject : int = 0
     eject : int = 0
 
-    in_north : int = 0
-    in_south : int = 0
-    in_east : int = 0
-    in_west : int = 0
-
     out_north : int = 0
     out_south : int = 0
     out_east : int = 0
     out_west : int = 0
-
-
-    @property
-    def num_in(self): return self.in_north + self.in_south + self.in_east + self.in_west + self.inject
-
-    @property
-    def num_out(self): return self.out_north + self.out_south + self.out_east + self.out_west + self.eject
 
     def __hash__(self): return hash((self.r, self.c))
 
@@ -58,18 +59,10 @@ class Noc:
         return route
 
     def count_hop(self, rs : Router, rd : Router):
-        if rs.r > rd.r:
-            rs.out_south += 1
-            rd.in_north += 1
-        elif rs.r < rd.r:
-            rs.out_north += 1
-            rd.in_south += 1
-        elif rs.c > rd.c:
-            rs.out_west += 1
-            rd.in_east += 1
-        else:
-            rs.out_east += 1
-            rd.in_west += 1
+        if rs.r > rd.r: rs.out_south += 1
+        elif rs.r < rd.r: rs.out_north += 1
+        elif rs.c > rd.c: rs.out_west += 1
+        else: rs.out_east += 1
 
     def count_route(self, route):
         route[0].inject += 1
@@ -116,4 +109,13 @@ class Noc:
             [Router(r, c) for c in range(arch.ncols)]
             for r in range(arch.nrows)
         ], arch.noc_ports_per_dir)
+
+    def to_numpy(self):
+        return np.array([
+            [
+                [self[r, c].out_north, self[r, c].out_south, self[r, c].out_east, self[r, c].out_west, self[r, c].inject, self[r, c].eject]
+                for c in range(self.arch.ncols)
+            ]
+            for r in range(self.arch.nrows)
+        ], dtype=np.uint32)
 

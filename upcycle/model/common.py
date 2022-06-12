@@ -185,35 +185,21 @@ def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
     assert op.flops == wl.flops, f'{op.flops} != {wl.flops}, {wl.flops / op.flops}'
     return wl
 
-class Soc:
-    def __init__(self, arch : Arch, placement_mode : str = 'naive'):
-        self.arch = arch
-        self.placement_mode = placement_mode
+@dataclass(frozen=True)
+class SimResult:
+    nsteps : int
+    cycles : int
+    traffic : np.ndarray
 
-    def simulate(self, op : Operator): raise NotImplementedError()
+sim_funcs = {}
 
-    def noc(self, step : int): raise NotImplementedError()
-
-    @property
-    def nsteps(self): raise NotImplementedError()
-
-    @property
-    def cycles(self): raise NotImplementedError()
-
-    @property
-    def total_hops(self):
-        return sum(self.noc(step).total_hops for step in range(self.nsteps))
-
-
-socs = {}
-
-def register_soc(archclass):
-    def decorator(xclass):
-        global socs
-        socs[archclass] = xclass
-        return xclass
+def register_sim(archclass):
+    def decorator(func):
+        global sim_funcs
+        sim_funcs[archclass] = func
+        return func
     return decorator
 
-def make_soc(arch : Arch, *args, **kwargs) -> Soc:
-    global socs
-    return socs[type(arch)](arch, *args, **kwargs)
+def simulate(arch : Arch, op : Operator, *args, **kwargs) -> SimResult:
+    global sim_funcs
+    return sim_funcs[type(arch)](arch, op, *args, **kwargs)
