@@ -130,6 +130,8 @@ def flatmap_matmul(arch : Arch, mm : Matmul, wl : M.WorkList, a, b, c, bbox=None
 
 @M.register_placement('flatmap', FlatMeshArch, Matmul)
 @M.register_placement('flatmap', FlatMeshArch, Linear)
+@M.register_placement('flatmap', BgroupArch, Matmul)
+@M.register_placement('flatmap', BgroupArch, Linear)
 @M.register_placement('flatmap', OracleArch, Matmul)
 @M.register_placement('flatmap', OracleArch, Linear)
 def place_matmul_flatmap(arch : Arch, mm : Matmul):
@@ -149,6 +151,8 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul):
 
 @M.register_placement('flatmap', FlatMeshArch, MatmulBwd)
 @M.register_placement('flatmap', FlatMeshArch, LinearBwd)
+@M.register_placement('flatmap', BgroupArch, MatmulBwd)
+@M.register_placement('flatmap', BgroupArch, LinearBwd)
 @M.register_placement('flatmap', OracleArch, MatmulBwd)
 @M.register_placement('flatmap', OracleArch, LinearBwd)
 def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd):

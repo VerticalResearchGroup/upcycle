@@ -88,6 +88,7 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         raise NotImplementedError()
 
 @M.register_placement('flatmap', FlatMeshArch, Conv2D)
+@M.register_placement('flatmap', BgroupArch, Conv2D)
 @M.register_placement('flatmap', OracleArch, Conv2D)
 def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
     n = conv.n
@@ -192,6 +193,7 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
         raise NotImplementedError()
 
 @M.register_placement('flatmap', FlatMeshArch, Conv2DBwd)
+@M.register_placement('flatmap', BgroupArch, Conv2DBwd)
 @M.register_placement('flatmap', OracleArch, Conv2DBwd)
 def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
     n = conv.n

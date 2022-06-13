@@ -82,6 +82,7 @@ class LstmTile(M.WorkItemPerfectCompute):
         yield from self.c[self.li, self.ms, self.ns]
 
 @M.register_placement('flatmap', FlatMeshArch, Lstm)
+@M.register_placement('flatmap', BgroupArch, Lstm)
 @M.register_placement('flatmap', OracleArch, Lstm)
 def place_lstm_flatmap(arch : Arch, lstm : Lstm):
     logger.debug(f'=== Place LSTM ===')

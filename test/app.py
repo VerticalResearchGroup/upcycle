@@ -31,16 +31,18 @@ def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, result 
         if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
         logger.info(f'+ Latency: {int(result.cycles)} cyc, Hops: {np.sum(result.traffic)}')
         logger.info(f'+ Compute: {gops} Gops ({blue}Efficiency: {eff} %{reset})')
+        if 'avg_groups' in result.kwstats:
+            logger.info(f'+ Avg Groups Per Line: {result.kwstats["avg_groups"]}')
 
 
-def simulate_app(arch : U.Arch, app : U.apps.Trace, soc_args):
+def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args):
     layers = []
     cache = {}
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()
         if op not in cache:
-            result = simulate_layer(arch, op, soc_args)
+            result = simulate_layer(arch, op, sim_args)
             cache[op] = result
             hit = False
         else:
@@ -55,12 +57,12 @@ def simulate_app(arch : U.Arch, app : U.apps.Trace, soc_args):
     tt1 = time.perf_counter_ns()
     return tt1 - tt0, layers
 
-def simulate_app_par(arch : U.Arch, app : U.apps.Trace, soc_args):
+def simulate_app_par(arch : U.Arch, app : U.apps.Trace, sim_args):
     pool = multiprocessing.Pool(16)
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
     unique_results = pool.map(
-        functools.partial(simulate_layer, arch, soc_args=soc_args), unique_ops)
+        functools.partial(simulate_layer, arch, sim_kwargs=sim_args), unique_ops)
 
     cache = {op: result for op, result in zip(unique_ops, unique_results)}
     tt1 = time.perf_counter_ns()
@@ -96,7 +98,7 @@ if __name__ == '__main__':
         assert not args.parallel, f'Cannot debug in parallel'
         logger.setLevel(logging.DEBUG)
 
-    arch = U.OracleArch(2e9, 512, 1, 32, 64, 1)
+    arch = U.BgroupArch(2e9, 512, 1, 32, 64, 1, 4, 8)
     dtype = U.Dtype.from_str(args.dtype)
 
     if args.infer:

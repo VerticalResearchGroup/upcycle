@@ -91,5 +91,11 @@ class Operator:
 class FlatMeshArch(Arch): pass
 
 @dataclass(order=True, frozen=True)
+class BgroupArch(Arch):
+    grows : int = 4
+    gcols : int = 8
+
+
+@dataclass(order=True, frozen=True)
 class OracleArch(Arch): pass
 
