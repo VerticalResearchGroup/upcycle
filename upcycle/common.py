@@ -36,6 +36,7 @@ class Slice:
     def __div__(self, c : int): return self._div(c)
     def __truediv__(self, c : int): return self._div(c)
     def __floordiv__(self, c : int): return self._div(c)
+    def __contains__(self, i : int): return self.start <= i < self.stop
 
     def __len__(self):
         return (self.stop - self.start) // self.step

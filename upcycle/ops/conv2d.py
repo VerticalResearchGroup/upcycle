@@ -7,6 +7,7 @@ from .common import *
 
 logger = logging.getLogger(__name__)
 
+@operator
 @dataclass(frozen=True)
 class Conv2D(Operator):
     n : int
@@ -26,6 +27,7 @@ class Conv2D(Operator):
     def flops(self):
         return self.n * self.p * self.q * self.k * self.r * self.s * self.c * 2
 
+@operator
 @dataclass(frozen=True)
 @register_backward(Conv2D)
 class Conv2DBwd(Conv2D):
@@ -87,26 +89,25 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         if not self.write: return
         raise NotImplementedError()
 
-@M.register_placement('flatmap', FlatMeshArch, Conv2D)
-@M.register_placement('flatmap', BgroupArch, Conv2D)
-@M.register_placement('flatmap', OracleArch, Conv2D)
+def make_conv2d_tensors(conv : Conv2D):
+    ti = M.Tensor(
+        1,
+        conv.dtype,
+        (conv.n, conv.h + 2 * conv.pad, conv.w + 2 * conv.pad, conv.c))
+
+    tw = M.Tensor(
+        2,
+        conv.dtype,
+        (conv.r, conv.s, conv.k, conv.c) if not conv.tr_w \
+            else (conv.r, conv.s, conv.c, conv.k))
+
+    to = M.Tensor(3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
+    return ti, tw, to
+
+@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2D)
 def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
-    n = conv.n
-    h = conv.h
-    w = conv.w
-    c = conv.c
-    p = conv.p
-    q = conv.q
-    k = conv.k
-    r = conv.r
-    s = conv.s
-    pad = conv.pad
-
-    ti = M.Tensor(1, conv.dtype, (n, h + 2 * pad, w + 2 * pad, c))
-    tw = M.Tensor(2, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
-    to = M.Tensor(3, conv.dtype, (n, p, q, k))
-
-    npixels = n * p * q
+    ti, tw, to = make_conv2d_tensors(conv)
+    npixels = conv.n * conv.p * conv.q
     if npixels > arch.ntiles:
         kblk = 128
     elif npixels > arch.ntiles // 4:
@@ -115,7 +116,7 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
         kblk = 8
 
     qblk = int(max(1, 32 / kblk))
-    nblk = int(max(1, arch.ncols // n))
+    nblk = int(max(1, arch.ncols // conv.n))
 
     wl = M.WorkList.from_arch(arch, [ti, tw, to])
     for ni, col in enumerate(range(0, arch.ncols, nblk)):
@@ -139,6 +140,9 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
 
     return wl
 
+@M.register_placement('pg', [OracleArch, BgroupArch], Conv2D)
+def place_conv2d_profiled(arch : Arch, conv : Conv2D):
+    return profiled_placement(arch, conv, place_conv2d_flatmap)
 
 @dataclass(frozen=True)
 class Conv2DDiTile(M.WorkItemPerfectCompute):
@@ -192,9 +196,7 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
         if not self.write: return
         raise NotImplementedError()
 
-@M.register_placement('flatmap', FlatMeshArch, Conv2DBwd)
-@M.register_placement('flatmap', BgroupArch, Conv2DBwd)
-@M.register_placement('flatmap', OracleArch, Conv2DBwd)
+@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2DBwd)
 def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
     n = conv.n
     h = conv.h

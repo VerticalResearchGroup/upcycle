@@ -1,5 +1,6 @@
 from .common import *
 from . import ops
+from . import profiles
 from . import apps
 from . import model
 # from . import anim

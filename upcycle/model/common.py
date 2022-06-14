@@ -176,10 +176,23 @@ class WorkList:
 
 placement_funcs = {}
 
-def register_placement(mode, archclass, opclass):
-    def decorator(x):
-        placement_funcs[(mode, archclass, opclass)] = x
-        return x
+def register_placement_single(mode, archclass, opclass, f):
+    placement_funcs[(mode, archclass, opclass)] = f
+
+def register_placement(mode_s, archclass_s, opclass_s):
+    if not isinstance(mode_s, list):
+        mode_s = [mode_s]
+    if not isinstance(archclass_s, list):
+        archclass_s = [archclass_s]
+    if not isinstance(opclass_s, list):
+        opclass_s = [opclass_s]
+
+    def decorator(f):
+        for mode in mode_s:
+            for archclass in archclass_s:
+                for opclass in opclass_s:
+                    register_placement_single(mode, archclass, opclass, f)
+        return f
     return decorator
 
 def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
