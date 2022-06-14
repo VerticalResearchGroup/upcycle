@@ -82,6 +82,8 @@ def bertlarge(dtype, n=1, s=512):
 
 def bertlarge384(dtype, n=1, s=384): return bertlarge(dtype, n, s)
 
+def bertlarge_squadavg(dtype, n=1, s=178): return bertlarge(dtype, n, s)
+
 def bertbase(dtype, n=1, s=512):
     return Trace([
         ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
@@ -325,7 +327,7 @@ def rnnt_train(dtype, n, il=200, ol=200):
     ] * ol))
 
 app_infer_flops = {
-    'bert-large-squad-384': bertlarge(Dtype.I8, 1, 384).flops,
+    'bert-large-squad-avg': bertlarge(Dtype.I8, 1, 178).flops,
     'resnet50': resnet50(Dtype.I8, 1).flops,
     'ssdrn34-1200': ssdrn34_1200(Dtype.I8, 1).flops,
     'rnnt': rnnt_infer(Dtype.I8, 1).flops,
@@ -334,6 +336,7 @@ app_infer_flops = {
 infer_apps_by_name = {
     'testconv': testconv_fwd,
     'bert-large-squad-384': bertlarge384,
+    'bert-large-squad-avg': bertlarge_squadavg,
     'bert-base-squad-384': bertbase384,
     'resnet50': resnet50,
     'ssdrn34-1200': ssdrn34_1200,

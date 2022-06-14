@@ -21,7 +21,7 @@ class NvidiaAppStats:
 
 a100_perf = {
     # https://github.com/mlcommons/inference_results_v1.0/tree/master/closed/NVIDIA/results/A100-PCIex1_TRT/bert-99/
-    'bert-large-squad-384': NvidiaAppStats(Dtype.I8, 618, 2880, 1024, Dtype.FP16, None, None),
+    'bert-large-squad-avg': NvidiaAppStats(Dtype.I8, 618, 2880, 1024, Dtype.FP16, None, None),
     # 'bert-large-512': NvidiaAppStats(Dtype.I8, None, None, None, Dtype.FP16, None, None),
 
     # https://github.com/mlcommons/inference_results_v1.0/tree/master/closed/NVIDIA/results/A100-PCIex1_TRT/resnet50
