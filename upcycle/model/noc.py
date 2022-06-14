@@ -44,6 +44,26 @@ class Noc:
     def __getitem__(self, coords : tuple[int, int]):
         return self.routers[coords[0]][coords[1]]
 
+    @staticmethod
+    def trace_route(src : tuple[int, int], dst : tuple[int, int]):
+        r, c = src
+        route = []
+        prev = (r, c)
+
+        while c != dst[1]:
+            c += 1 if c < dst[1] else -1
+            cur = (r, c)
+            route.append((prev, cur))
+            prev = cur
+
+        while r != dst[0]:
+            r += 1 if r < dst[0] else -1
+            cur = (r, c)
+            route.append((prev, cur))
+            prev = cur
+
+        return route
+
     def get_route(self, src : tuple[int, int], dst : tuple[int, int]):
         r, c = src
         route = [self[r, c]]
