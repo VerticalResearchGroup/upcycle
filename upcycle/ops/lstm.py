@@ -8,6 +8,7 @@ from . import matmul
 
 logger = logging.getLogger(__name__)
 
+@operator
 @dataclass(frozen=True)
 class Lstm(Operator):
     n : int
@@ -26,64 +27,94 @@ class Lstm(Operator):
         ])
 
 @dataclass(frozen=True)
-class LstmTile(M.WorkItemPerfectCompute):
+class LstmMatmul(M.WorkItemPerfectCompute):
     lstm : Lstm
+    xh : M.Tensor
+    wu : M.Tensor
+    o : M.Tensor
     write : bool
-    c : M.Tensor
-    x : M.Tensor
-    h : M.Tensor
-    w : M.Tensor
-    u : M.Tensor
 
     si : int
-    ni : int
-    hs : Slice
+    ns : Slice # M = Batch
+    hs : Slice # N = 4H
+    hds : Slice # K = H or D
 
     @property
     def flops(self):
-        return 4 * len(self.hs) * (self.lstm.h + self.lstm.d) * 2
+        return len(self.ns) * len(self.hs) * len(self.hds) * 2
 
     @property
     def read_trace(self):
-        if not self.lstm.tr_xh:
-            yield from self.c[self.si, self.ni, :]
-            yield from self.x[self.si, self.ni, :]
-            yield from self.h[self.si, self.ni, :]
-        else:
-            yield from self.c[self.si, :, self.ni]
-            yield from self.x[self.si, :, self.ni]
-            yield from self.h[self.si, :, self.ni]
+        if not self.lstm.tr_xh: yield from self.xh[self.si, self.ns, :]
+        else: yield from self.xh[self.si, :, self.ns]
 
-        if not self.lstm.tr_wu:
-            yield from self.w[:, self.hs + (self.lstm.h * 0)]
-            yield from self.w[:, self.hs + (self.lstm.h * 1)]
-            yield from self.w[:, self.hs + (self.lstm.h * 2)]
-            yield from self.w[:, self.hs + (self.lstm.h * 3)]
-
-            yield from self.u[:, self.hs + (self.lstm.h * 0)]
-            yield from self.u[:, self.hs + (self.lstm.h * 1)]
-            yield from self.u[:, self.hs + (self.lstm.h * 2)]
-            yield from self.u[:, self.hs + (self.lstm.h * 3)]
-        else:
-            yield from self.w[self.hs + (self.lstm.h * 0), :]
-            yield from self.w[self.hs + (self.lstm.h * 1), :]
-            yield from self.w[self.hs + (self.lstm.h * 2), :]
-            yield from self.w[self.hs + (self.lstm.h * 3), :]
-
-            yield from self.u[self.hs + (self.lstm.h * 0), :]
-            yield from self.u[self.hs + (self.lstm.h * 1), :]
-            yield from self.u[self.hs + (self.lstm.h * 2), :]
-            yield from self.u[self.hs + (self.lstm.h * 3), :]
-
+        if self.lstm.tr_wu: yield from self.wu[self.si, self.hs, :]
+        else: yield from self.wu[self.si, :, self.hs]
 
     @property
     def write_trace(self):
         if not self.write: return
-        yield from self.c[self.li, self.ms, self.ns]
+        yield from self.o[self.si, self.ns, self.hs]
 
-@M.register_placement('flatmap', FlatMeshArch, Lstm)
-@M.register_placement('flatmap', BgroupArch, Lstm)
-@M.register_placement('flatmap', OracleArch, Lstm)
+@dataclass(frozen=True)
+class LstmBackend(M.WorkItemPerfectCompute):
+    lstm : Lstm
+    txp : M.Tensor # S, N, 4H
+    thp : M.Tensor # S, N, 4H
+    tc : M.Tensor # S, N, H or S, H, N
+    th : M.Tensor # S, N, H or S, H, N
+    write : bool
+
+    si : int
+    ns : Slice
+    hs : Slice
+
+    @property
+    def flops(self): return 0
+
+    @property
+    def read_trace(self):
+        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 0]
+        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 0]
+        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 1]
+        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 1]
+        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 2]
+        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 2]
+        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 3]
+        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 3]
+
+    @property
+    def write_trace(self): raise NotImplementedError()
+
+def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si, hd, bbox=None):
+    wl.flatmap_place([
+        [
+            LstmMatmul(
+                arch, lstm.dtype,
+                lstm, txh, twu, to, False, si,
+                Slice.blk(bm, lstm.n, 16),
+                Slice.blk(bn, 4 * lstm.h, 8),
+                Slice.blk(bk, hd, 64))
+            for bk in range(0, hd, 64)
+        ]
+        for bm in range(0, lstm.n, 16)
+        for bn in range(0, 4 * lstm.h, 8)
+    ], bbox=bbox)
+
+def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc, th, si, bbox=None):
+    wl.flatmap_place([
+        [
+            LstmBackend(
+                arch, lstm.dtype,
+                lstm, txp, thp, tc, th, False, si,
+                Slice.blk(bn, lstm.n, 1),
+                Slice.blk(bh, lstm.h, 32))
+        ]
+        for bn in range(0, lstm.n, 1)
+        for bh in range(0, lstm.h, 32)
+    ], bbox=bbox)
+
+@M.register_placement('flatmap', [OracleArch, BgroupArch], [Lstm])
 def place_lstm_flatmap(arch : Arch, lstm : Lstm):
     logger.debug(f'=== Place LSTM ===')
     logger.debug(f'+ LSTM: {lstm}')
@@ -93,36 +124,25 @@ def place_lstm_flatmap(arch : Arch, lstm : Lstm):
     d = lstm.d
     h = lstm.h
 
-    tc = M.Tensor(1, lstm.dtype, (s, n, h) if not lstm.tr_xh else (s, h, n))
-    tx = M.Tensor(2, lstm.dtype, (s, n, d) if not lstm.tr_xh else (s, d, n))
-    th = M.Tensor(3, lstm.dtype, (s, n, h) if not lstm.tr_xh else (s, h, n))
-    tw = M.Tensor(4, lstm.dtype, (h * 4, d) if not lstm.tr_wu else (d, h * 4))
-    tu = M.Tensor(5, lstm.dtype, (h * 4, h) if not lstm.tr_wu else (h, h * 4))
+    tc = M.Tensor(arch, 1, lstm.dtype, (s, n, h) if not lstm.tr_xh else (s, h, n))
+    tx = M.Tensor(arch, 2, lstm.dtype, (s, n, d) if not lstm.tr_xh else (s, d, n))
+    th = M.Tensor(arch, 3, lstm.dtype, (s, n, h) if not lstm.tr_xh else (s, h, n))
+    txp = M.Tensor(arch, 3, lstm.dtype, (s, n, 4 * h))
+    thp = M.Tensor(arch, 3, lstm.dtype, (s, n, 4 * h))
+    tw = M.Tensor(arch, 4, lstm.dtype, (s, h * 4, d) if lstm.tr_wu else (s, d, h * 4))
+    tu = M.Tensor(arch, 5, lstm.dtype, (s, h * 4, h) if lstm.tr_wu else (s, h, h * 4))
 
-    wl = M.WorkList.from_arch(arch, [tc, tx, th, tw, tu])
+    wl = M.WorkList.from_arch(arch, [tc, tx, th, txp, thp, tw, tu])
 
-    hblk = 128
-    rows_per_batch = h / hblk
-    col_height = arch.nrows
-    while col_height > rows_per_batch: col_height //= 2
-    batch_per_col = arch.nrows // col_height
-
-    logger.debug(f'+ hblk={hblk}')
+    cols_x = int(d / (d + h) * arch.ncols)
 
     for si in range(s):
-        logger.debug(f'+ si={si}')
-        for ni in range(n):
-            col = int((ni // batch_per_col) % arch.ncols)
-            row = int((ni % batch_per_col) * col_height)
-            logger.debug(f'    + ni={ni}, bbox={(row, row + col_height, col, col + 1)}')
-            wl.flatmap_place([
-                [
-                    LstmTile(
-                        arch, lstm.dtype, lstm, False,
-                        tc, tx, th, tw, tu,
-                        si, ni, Slice.blk(hb, h, hblk))
-                ]
-                for hb in range(0, h, hblk)
-            ], bbox=(row, row + col_height, col, col + 1))
+        flatmap_lstm_mm(arch, lstm, wl, tx, tw, txp, si, d, bbox=(0, arch.nrows, 0, cols_x))
+        flatmap_lstm_mm(arch, lstm, wl, th, tu, thp, si, h, bbox=(0, arch.nrows, cols_x, arch.ncols))
+        flatmap_lstm_backend(arch, lstm, wl, txp, thp, tc, th, si)
 
     return wl
+
+@M.register_placement('pg', [OracleArch, BgroupArch], [Lstm])
+def place_lstm_profiled(arch : Arch, lstm : Lstm):
+    return profiled_placement(arch, lstm, place_lstm_flatmap)

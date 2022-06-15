@@ -104,9 +104,9 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul):
     n = mm.n
     k = mm.k
 
-    a = M.Tensor(1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    b = M.Tensor(2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    c = M.Tensor(3, mm.dtype, (l, m, n))
+    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
 
     wl = M.WorkList.from_arch(arch, [a, b, c])
     flatmap_matmul(arch, mm, wl, a, b, c)
@@ -124,12 +124,12 @@ def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd):
     n = mm.n
     k = mm.k
 
-    a = M.Tensor(1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    b = M.Tensor(2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    c = M.Tensor(3, mm.dtype, (l, m, n))
-    da = M.Tensor(4, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    db = M.Tensor(5, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    dc = M.Tensor(6, mm.dtype, (l, m, n))
+    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
+    da = M.Tensor(arch, 4, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    db = M.Tensor(arch, 5, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    dc = M.Tensor(arch, 6, mm.dtype, (l, m, n))
 
     wl = M.WorkList.from_arch(arch, [a, b, c, da, db, dc])
     flatmap_matmul(arch, mm.da, wl, dc, b, da, bbox=(0, arch.nrows, 0, arch.ncols // 2))

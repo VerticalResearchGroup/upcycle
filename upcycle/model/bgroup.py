@@ -105,14 +105,14 @@ def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_c
                 if (rs, rd) in seen_hops: continue
                 seen_hops.add((rs, rd))
                 net.count_hop(rs, rd)
-                net.count_hop(rs, rd)
+                if arch.line_size == 64: net.count_hop(rs, rd)
 
             for (rs_coords, rd_coords) in trace_group_hops(arch, (dgr, dgc), off):
                 rs = net.__getitem__(rs_coords)
                 rd = net.__getitem__(rd_coords)
                 # logger.debug(f'+++ group hop: {(rs, rd)}')
                 net.count_hop(rs, rd)
-                net.count_hop(rs, rd)
+                if arch.line_size == 64: net.count_hop(rs, rd)
 
         sum_dests += len(dests)
         sum_groups += len(groups)

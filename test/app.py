@@ -37,7 +37,7 @@ def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, result 
             logger.info(f'+ (Max) Avg Groups Per Line: {np.max(result.kwstats["avg_groups"])}')
 
 
-def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args):
+def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args, verbose=True):
     layers = []
     cache = {}
     tt0 = time.perf_counter_ns()
@@ -54,13 +54,13 @@ def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args):
         layers.append(result)
 
         t1 = time.perf_counter_ns()
-        log_layer(arch, app, i, op, result, t1 - t0, details=not hit)
+        if verbose: log_layer(arch, app, i, op, result, t1 - t0, details=not hit)
 
     tt1 = time.perf_counter_ns()
     return tt1 - tt0, layers
 
-def simulate_app_par(arch : U.Arch, app : U.apps.Trace, sim_args):
-    pool = multiprocessing.Pool(16)
+def simulate_app_par(arch : U.Arch, app : U.apps.Trace, sim_args, verbose=True):
+    pool = multiprocessing.Pool(24)
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
     unique_results = pool.map(
@@ -73,14 +73,14 @@ def simulate_app_par(arch : U.Arch, app : U.apps.Trace, sim_args):
     for i, op in enumerate(app.oplist):
         result = cache[op]
         layers.append(result)
-        log_layer(arch, app, i, op, result)
+        if verbose: log_layer(arch, app, i, op, result)
 
     return tt1 - tt0, layers
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
-    parser.add_argument('--arch', type=str, default='oracle')
+    parser.add_argument('-r', '--arch', type=str, default='oracle')
     parser.add_argument('-d', '--dtype', type=str, default='I8')
     parser.add_argument('-t', '--train', action='store_true')
     parser.add_argument('-i', '--infer', action='store_true')
@@ -89,26 +89,28 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--placement-mode', type=str, default='pg')
     parser.add_argument('-p', '--parallel', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('-l', '--layer', type=int, default=None)
 
     parser.add_argument('--noc-ports', type=int, default=1)
     parser.add_argument('--l1-capacity', type=int, default=64*1024)
     parser.add_argument('--l1-assoc', type=int, default=16)
+    parser.add_argument('--line-size', type=int, default=64)
     parser.add_argument('--bgsize', type=str, default='4,8')
 
     args = parser.parse_args()
     assert not (args.train and args.infer)
     assert args.train or args.infer
 
-    if args.verbose:
+    if args.debug:
         assert not args.parallel, f'Cannot debug in parallel'
         logger.setLevel(logging.DEBUG)
 
     if args.arch == 'oracle':
-        arch = U.OracleArch(2.4e9, 512, 1, 32, 64, args.noc_ports)
+        arch = U.OracleArch(2.4e9, 512, 1, 32, 64, args.noc_ports, args.line_size)
     elif args.arch == 'bg':
         [grows, gcols] = list(map(int, args.bgsize.split(',')))
-        arch = U.BgroupArch(2.4e9, 512, 1, 32, 64, args.noc_ports, grows, gcols)
+        arch = U.BgroupArch(2.4e9, 512, 1, 32, 64, args.noc_ports, args.line_size, grows, gcols)
 
     dtype = U.Dtype.from_str(args.dtype)
 
@@ -132,8 +134,8 @@ if __name__ == '__main__':
         l1_capacity=args.l1_capacity,
         l1_assoc=args.l1_assoc)
 
-    if args.parallel: time_ns, layers = simulate_app_par(arch, app, sim_args)
-    else: time_ns, layers = simulate_app(arch, app, sim_args)
+    if args.parallel: time_ns, layers = simulate_app_par(arch, app, sim_args, args.verbose)
+    else: time_ns, layers = simulate_app(arch, app, sim_args, args.verbose)
 
     cycles = sum(result.cycles for result in layers)
     logging.info('App Summary:')

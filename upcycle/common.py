@@ -66,6 +66,7 @@ class Arch:
     nrows : int
     ncols : int
     noc_ports_per_dir : int = 1
+    line_size : int = 64
 
     def __post_init__(self):
         if self.noc_ports_per_dir > 1:

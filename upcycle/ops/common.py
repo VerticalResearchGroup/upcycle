@@ -70,15 +70,16 @@ def profiled_placement(arch, op, fallback):
     logger.debug(f'Looking for placement profile for {op}')
     for prof, f in pg_placement_map[key]:
         valid, score = prof.match(op)
-        logger.debug(f'    + {prof} {valid} {score}')
-        if valid and score > best_score:
-            best_score, best_func = score, f
+        logger.debug(f'    + {prof} valid={valid} score={score} (best={best_score})')
+        if valid and (score > best_score):
+            best_score = score
+            best_func = f
 
 
     if best_func is None:
         logger.debug(f'No valid profile for {op}. Using Fallback...')
         return fallback(arch, op)
 
-    logger.debug(f'Profiled placement: {op} -> {best_func.__name__} (score = {score})')
+    logger.debug(f'Profiled placement: {op} -> {best_func.__name__} (score = {best_score})')
 
     return best_func(arch, op)

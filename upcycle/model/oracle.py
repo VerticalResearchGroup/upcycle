@@ -33,7 +33,7 @@ def simulate_oracle_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_c
                 if (rs, rd) in seen_hops: continue
                 seen_hops.add((rs, rd))
                 net.count_hop(rs, rd)
-                net.count_hop(rs, rd)
+                if arch.line_size == 64: net.count_hop(rs, rd)
 
 
     t1 = time.perf_counter()

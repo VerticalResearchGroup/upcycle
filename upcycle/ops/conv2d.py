@@ -89,24 +89,57 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         if not self.write: return
         raise NotImplementedError()
 
-def make_conv2d_tensors(conv : Conv2D):
+def make_conv2d_tensors(arch : Arch, conv : Conv2D):
     ti = M.Tensor(
+        arch,
         1,
         conv.dtype,
         (conv.n, conv.h + 2 * conv.pad, conv.w + 2 * conv.pad, conv.c))
 
     tw = M.Tensor(
+        arch,
         2,
         conv.dtype,
         (conv.r, conv.s, conv.k, conv.c) if not conv.tr_w \
             else (conv.r, conv.s, conv.c, conv.k))
 
-    to = M.Tensor(3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
+    to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
     return ti, tw, to
+
+def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
+    ti, tw, to = make_conv2d_tensors(arch, conv)
+    wl = M.WorkList.from_arch(arch, [ti, tw, to])
+
+    kgrp = conv.k // 16
+
+    pgrp = conv.p / arch.nrows
+    qgrp = conv.q / (arch.ncols / kgrp)
+
+    for n in range(0, conv.n):
+        for k in range(0, conv.k, 16):
+            for p in range(conv.p):
+                row = int(p / pgrp)
+                for q in range(conv.q):
+                    col = (int(q / qgrp) + (k // 16) * (arch.ncols // kgrp))
+                    wl.flatmap_place([
+                        [
+                            Conv2DTile(
+                                arch, conv.dtype,
+                                conv, ti, tw, to, False, n,
+                                Slice.blk(p, conv.p, 1),
+                                Slice.blk(q, conv.q, 1),
+                                Slice.blk(bc, conv.c, 16),
+                                Slice.blk(k, conv.k, 16),
+                                conv.tr_w)
+                            for bc in range(0, conv.c, 16)
+                        ]
+                    ], bbox=(row, row + 1, col, col + 1))
+
+    return wl
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2D)
 def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
-    ti, tw, to = make_conv2d_tensors(conv)
+    ti, tw, to = make_conv2d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
     if npixels > arch.ntiles:
         kblk = 128
@@ -210,12 +243,12 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
     st = conv.stride
     pad = conv.pad
 
-    ti = M.Tensor(1, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
-    tw = M.Tensor(2, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
-    to = M.Tensor(3, conv.dtype, (n, p, q, k))
-    tdi = M.Tensor(4, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
-    tdw = M.Tensor(5, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
-    tdo = M.Tensor(6, conv.dtype, (n, p, q, k))
+    ti = M.Tensor(arch, 1, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
+    tw = M.Tensor(arch, 2, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
+    to = M.Tensor(arch, 3, conv.dtype, (n, p, q, k))
+    tdi = M.Tensor(arch, 4, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
+    tdw = M.Tensor(arch, 5, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
+    tdo = M.Tensor(arch, 6, conv.dtype, (n, p, q, k))
 
     hblk = st
     wblk = st

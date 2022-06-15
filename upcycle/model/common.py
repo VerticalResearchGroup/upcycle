@@ -12,24 +12,39 @@ from . import noc
 
 logger = logging.getLogger(__name__)
 
-@functools.lru_cache
-def _gen_offs(strides, i, d):
-    if isinstance(d, int): return [d * strides[i]]
+@functools.lru_cache(maxsize=4096)
+def _gen_offs(stride, d):
+    if isinstance(d, int): return [d * stride]
     elif isinstance(d, Slice):
-        return list(map(lambda x: x * strides[i], d.indices))
+        return list(map(lambda x: x * stride, d.indices))
 
-@functools.lru_cache
-def _gen_ids_rec(shape, strides, di, idx):
-    d = idx[di]
-    if di == len(shape) - 1: return list(_gen_offs(strides, di, d))
+@functools.lru_cache(maxsize=4096)
+def _gen_ids_rec(shape, strides, idx):
+    if len(shape) == 1: return list(_gen_offs(strides[0], idx[0]))
     else: return sum([
-        list(map(lambda i: i + off, _gen_ids_rec(shape, strides, di + 1, idx)))
-        for off in _gen_offs(strides, di, d)
+        list(map(lambda i: i + off, _gen_ids_rec(shape[1:], strides[1:], idx[1:])))
+        for off in _gen_offs(strides[0], idx[0])
     ], start=[])
+
+# @functools.lru_cache
+# def _gen_offs(strides, i, d):
+#     if isinstance(d, int): return [d * strides[i]]
+#     elif isinstance(d, Slice):
+#         return list(map(lambda x: x * strides[i], d.indices))
+
+# @functools.lru_cache
+# def _gen_ids_rec(shape, strides, di, idx):
+#     d = idx[di]
+#     if di == len(shape) - 1: return list(_gen_offs(strides, di, d))
+#     else: return sum([
+#         list(map(lambda i: i + off, _gen_ids_rec(shape, strides, di + 1, idx)))
+#         for off in _gen_offs(strides, di, d)
+#     ], start=[])
 
 
 @dataclass(frozen=True)
 class Tensor:
+    arch : Arch
     oid : int
     dtype : Dtype
     shape : tuple
@@ -43,20 +58,20 @@ class Tensor:
                 int(np.prod(self.shape[i+1:]) * Dtype.sizeof(self.dtype))
                 for i in range(len(self.shape))))
 
-        object.__setattr__(self, 'linecache', {})
+        line_mask = (1 << int(np.ceil(np.log2(self.arch.line_size)))) - 1
+        object.__setattr__(self, 'line_mask', line_mask)
 
         assert np.prod(self.shape) * Dtype.sizeof(self.dtype) < 2**32, \
             f'Address space doesn\'t support Tensors > 4GB!'
 
-    @functools.lru_cache
     def _getlines(self, idx):
         assert len(self.shape) == len(idx)
         upper = self.oid << 32
         last = None
         lines = []
 
-        for off in _gen_ids_rec(self.shape, self.strides, 0, idx):
-            line = (upper | off) & ~0x3F
+        for off in _gen_ids_rec(self.shape, self.strides, idx):
+            line = (upper | off) & ~self.line_mask
             if last is not None and line == last: continue
             last = line
             lines.append(line)
@@ -283,6 +298,7 @@ def common_sim(
 ):
     cycles = 0
     kwstats = dict()
+    lbits = int(np.ceil(np.log2(arch.line_size)))
 
     if randomize_llc:
         llc_addr_map = list(range(arch.ntiles))
@@ -295,19 +311,17 @@ def common_sim(
         return (tid // arch.ncols), (tid % arch.ncols)
 
     def addr_llc_coords(addr : int):
-        line = addr >> 6
+        line = addr >> lbits
         tid = line & (arch.ntiles - 1)
-        if llc_addr_map is not None:
-            return tile_coords(llc_addr_map[tid])
-        else:
-            return tile_coords(tid)
+        if llc_addr_map is not None:  return tile_coords(llc_addr_map[tid])
+        else: return tile_coords(tid)
 
 
     wl = place_op(placement_mode, arch, op)
     l1_nway = int(l1_assoc)
-    l1_nset = int(l1_capacity / 64 / l1_nway)
+    l1_nset = int(l1_capacity / arch.line_size / l1_nway)
     l1 = [
-        [cache.Cache(l1_nset, l1_nway, 6) for _ in range(arch.ncols)]
+        [cache.Cache(l1_nset, l1_nway, lbits) for _ in range(arch.ncols)]
         for _ in range(arch.nrows)
     ]
 
@@ -321,7 +335,9 @@ def common_sim(
     for step in range(wl.nsteps):
         logger.debug(f'Step {step}')
 
+        logger.debug(f'+ Simulating tiles...')
         max_exec_cyc, dest_map = tile_sim_func(arch, kwstats, l1, wl, step)
+        logger.debug(f'+ Simulating NOC...')
         traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map, addr_llc_coords)
 
         net_latency = np.max(traffic[step, :, :, :]) / arch.noc_ports_per_dir
@@ -332,6 +348,8 @@ def common_sim(
 
         cycles += max(compute_cyc, net_latency)
         compute_cyc = max_exec_cyc
+
+        del dest_map
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f'+ Compute drain latency: {compute_cyc}')
