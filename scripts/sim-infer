@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# set -x
+APPS=${APPS:-resnet50 bert-large-squad-avg ssdrn34-1200 rnnt}
+LS=${LS:-32}
+PORTS=${PORTS:-1 2}
+ARCHS=${ARCH:-oracle bg}
+
+for APP in $APPS; do
+    for LS in $LS; do
+        for PORT in $PORTS; do
+            for ARCH in $ARCHS; do
+                python -OO test/app.py -i -a $APP -b online --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                echo ""
+                python -OO test/app.py -i -a $APP -b offline --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                echo ""
+            done
+        done
+    done
+done

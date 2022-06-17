@@ -343,6 +343,32 @@ infer_apps_by_name = {
     'rnnt': rnnt_infer,
 }
 
+infer_batch_sizes = {
+    'online': {
+        'testconv': 1,
+        'bert-large-squad-avg': 1,
+        'resnet50': 1,
+        'ssdrn34-1200': 1,
+        'rnnt': 1,
+    },
+    'offline': {
+        'testconv': 8,
+        'bert-large-squad-avg': 8,
+        'resnet50': 4,
+        'ssdrn34-1200': 4,
+        'rnnt': 512,
+    },
+}
+
+infer_dtype = {
+    'testconv': Dtype.I8,
+    'bert-large-squad-avg': Dtype.I8,
+    'resnet50': Dtype.I8,
+    'ssdrn34-1200': Dtype.I8,
+    'rnnt': Dtype.FP16,
+}
+
+
 train_apps_by_name = {
     'testconv': testconv_bwd,
     # 'bert-large-squad-384': bertlarge384,
@@ -352,3 +378,27 @@ train_apps_by_name = {
     'rnnt': rnnt_train,
 }
 
+train_batch_sizes = {
+    'small': {
+        'testconv': 1,
+        'bert-large-squad-avg': 1,
+        'resnet50': 1,
+        'ssdrn34-1200': 1,
+        'rnnt': 1,
+    },
+    'large': {
+        'testconv': 8,
+        'bert-large-squad-avg': 8,
+        'resnet50': 4,
+        'ssdrn34-1200': 4,
+        'rnnt': 512,
+    },
+}
+
+train_dtype = {
+    'testconv': Dtype.FP16,
+    'bert-large-squad-avg': Dtype.FP16,
+    'resnet50': Dtype.FP16,
+    'ssdrn34-1200': Dtype.FP16,
+    'rnnt': Dtype.FP16,
+}
