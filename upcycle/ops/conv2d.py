@@ -44,11 +44,12 @@ class Conv2DBwd(Conv2D):
 
                 flops += hr * wr * self.c * self.k * 2
 
-        return flops * self.n
+        return flops * self.n + super().flops
+        # return super().flops
 
     @staticmethod
     def from_forward(c : Conv2D):
-        return Conv2DBwd(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride, c.tr_w)
+        return Conv2DBwd(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride, c.pad, c.tr_w)
 
 @dataclass(frozen=True)
 class Conv2DTile(M.WorkItemPerfectCompute):
@@ -62,7 +63,6 @@ class Conv2DTile(M.WorkItemPerfectCompute):
     qs : Slice
     cs : Slice
     ks : Slice
-    tr_w : bool
 
 
     @property
@@ -79,7 +79,7 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         st = self.conv.stride
         yield from self.i[self.ni, self.ps * st, self.qs * st, self.cs]
 
-        if not self.tr_w:
+        if not self.conv.tr_w:
             yield from self.w[:, :, self.ks, self.cs]
         else:
             yield from self.w[:, :, self.cs, self.ks]
@@ -110,17 +110,18 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
     ti, tw, to = make_conv2d_tensors(arch, conv)
     wl = M.WorkList.from_arch(arch, [ti, tw, to])
 
-    kgrp = conv.k // 16
+    kblk = 16
+    kgrp = conv.k // kblk
 
     pgrp = conv.p / arch.nrows
     qgrp = conv.q / (arch.ncols / kgrp)
 
     for n in range(0, conv.n):
-        for k in range(0, conv.k, 16):
+        for k in range(0, conv.k, kblk):
             for p in range(conv.p):
                 row = int(p / pgrp)
                 for q in range(conv.q):
-                    col = (int(q / qgrp) + (k // 16) * (arch.ncols // kgrp))
+                    col = (int(q / qgrp) + (k // kblk) * (arch.ncols // kgrp))
                     wl.flatmap_place([
                         [
                             Conv2DTile(
@@ -129,11 +130,104 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
                                 Slice.blk(p, conv.p, 1),
                                 Slice.blk(q, conv.q, 1),
                                 Slice.blk(bc, conv.c, 16),
-                                Slice.blk(k, conv.k, 16),
-                                conv.tr_w)
+                                Slice.blk(k, conv.k, kblk))
                             for bc in range(0, conv.c, 16)
                         ]
                     ], bbox=(row, row + 1, col, col + 1))
+
+    return wl
+
+
+def place_conv_pq_spatial2(arch : Arch, conv : Conv2D):
+    ti, tw, to = make_conv2d_tensors(arch, conv)
+    wl = M.WorkList.from_arch(arch, [ti, tw, to])
+
+    kblk = 16
+
+    qk = conv.q * conv.k // kblk
+    qkgrp = qk // arch.ncols
+
+    pgrp = conv.p / arch.nrows
+
+    for n in range(0, conv.n):
+        for p in range(conv.p):
+            row = int(p / pgrp)
+            for q in range(conv.q):
+                for k in range(0, conv.k, kblk):
+                    col = int((q * conv.k // kblk + k // kblk) / qkgrp)
+                    wl.flatmap_place([
+                        [
+                            Conv2DTile(
+                                arch, conv.dtype,
+                                conv, ti, tw, to, False, n,
+                                Slice.blk(p, conv.p, 1),
+                                Slice.blk(q, conv.q, 1),
+                                Slice.blk(bc, conv.c, 16),
+                                Slice.blk(k, conv.k, kblk))
+                            for bc in range(0, conv.c, 16)
+                        ]
+                    ], bbox=(row, col))
+
+    return wl
+
+def blk_k(dtype : Dtype, k : int):
+    kblk_in = 16 if dtype == Dtype.I8 else 8
+
+    kblk_left = int(np.ceil(k / kblk_in))
+
+    if kblk_left < 4: kblk_col = 1
+    elif kblk_left < 8: kblk_col = 4
+    else: kblk_col = 8
+
+    kblk_left = int(np.ceil(kblk_left / kblk_col))
+
+    if kblk_left < 4: kblk_row = 1
+    elif kblk_left < 8: kblk_row = 4
+    else: kblk_row = 8
+
+    kblk_left = int(np.ceil(kblk_left / kblk_row))
+
+    return kblk_col, kblk_row, kblk_in, kblk_left
+
+def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D):
+    ti, tw, to = make_conv2d_tensors(arch, conv)
+    wl = M.WorkList.from_arch(arch, [ti, tw, to])
+
+    kblk_col, kblk_row, kblk_in, kblk_out = blk_k(conv.dtype, conv.k)
+
+
+    assert kblk_col * kblk_row * kblk_in * kblk_out == conv.k
+
+    logger.debug(f'+ kblk_col={kblk_col}, kblk_row={kblk_row}, kblk_in={kblk_in}')
+
+    pblk = max(1, int(np.ceil(conv.p / (arch.ncols / kblk_col))))
+    qblk = max(1, int(np.ceil(conv.q / (arch.nrows / kblk_row))))
+
+    logger.debug(f'+ pblk={pblk}, qblk={qblk}')
+
+    for ni in range(0, conv.n):
+        for p in range(0, conv.p, pblk):
+            for q in range(0, conv.q, qblk):
+                ki = 0
+                for _ in range(0, kblk_out):
+                    for kbi in range(kblk_col * kblk_row):
+                        col = (p // pblk) * kblk_col + (kbi % kblk_col)
+                        row = (q // qblk) * kblk_row + (kbi // kblk_col)
+
+                        assert conv.k > ki
+
+                        wl.flatmap_place([[
+                            Conv2DTile(
+                                arch, conv.dtype,
+                                conv, ti, tw, to, False, ni,
+                                Slice.blk(p, conv.p, pblk),
+                                Slice.blk(q, conv.q, qblk),
+                                Slice.blk(bc, conv.c, 16),
+                                Slice.blk(ki, conv.k, kblk_in))
+                            for bc in range(0, conv.c, 16)
+                        ]], bbox=(row, col))
+
+                        ki += kblk_in
 
     return wl
 
@@ -149,12 +243,12 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
         kblk = 8
 
     qblk = int(max(1, 32 / kblk))
-    nblk = int(max(1, arch.ncols // conv.n))
+    # nblk = int(max(1, arch.ncols // conv.n))
+    off = 0
 
     wl = M.WorkList.from_arch(arch, [ti, tw, to])
-    for ni, col in enumerate(range(0, arch.ncols, nblk)):
-        ncols = min(nblk, arch.ncols - col)
-        wl.flatmap_place([
+    for ni in range(0, conv.n):
+        off += wl.flatmap_place([
             [
                 Conv2DTile(
                     arch, conv.dtype,
@@ -162,14 +256,13 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
                     Slice.blk(bp, conv.p, 1),
                     Slice.blk(bq, conv.q, qblk),
                     Slice.blk(bc, conv.c, 16),
-                    Slice.blk(bk, conv.k, kblk),
-                    conv.tr_w)
+                    Slice.blk(bk, conv.k, kblk))
                 for bc in range(0, conv.c, 16)
             ]
             for bp in range(0, conv.p, 1)
             for bq in range(0, conv.q, qblk)
             for bk in range(0, conv.k, kblk)
-        ], bbox=(0, arch.nrows, col, col + ncols), randomize=False)
+        ], offset=off, bbox=None, randomize=False)
 
     return wl
 
@@ -189,7 +282,6 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
     ws : Slice
     cs : Slice
     ks : Slice
-    tr_w : bool
 
 
     @property
@@ -218,10 +310,55 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
             for wi in range(min(len(self.ws), st)):
                 ho = hi % self.conv.stride
                 wo = wi % self.conv.stride
-                if not self.tr_w: yield from self.w[ho::st, wo::st, self.ks, self.cs]
+                if not self.conv.tr_w: yield from self.w[ho::st, wo::st, self.ks, self.cs]
                 else: yield from self.w[ho::st, wo::st, self.cs, self.ks]
 
         yield from self.do[self.ni, self.hs / st, self.ws / st, self.ks]
+
+
+    @property
+    def write_trace(self):
+        if not self.write: return
+        raise NotImplementedError()
+
+@dataclass(frozen=True)
+class Conv2DDwTile(M.WorkItemPerfectCompute):
+    conv : Conv2DBwd
+    i : M.Tensor
+    dw : M.Tensor
+    do : M.Tensor
+    write : bool
+    ni : int
+
+    ps : Slice
+    qs : Slice
+
+    rs : Slice
+    ss : Slice
+
+    cs : Slice
+    ks : Slice
+
+
+    @property
+    def flops(self):
+        return len(self.ps) * len(self.qs) * len(self.rs) * len(self.ss) * len(self.cs) * len(self.ks) * 2
+
+
+    @property
+    def read_trace(self):
+        st = self.conv.stride
+
+        hs = self.ps * st
+        hs = Slice(hs.start, hs.stop, st)
+
+        ws = self.qs * st
+        ws = Slice(ws.start, ws.stop, st)
+
+        for ri in self.rs.indices:
+            for si in self.ss.indices:
+                yield from self.i[self.ni, hs + ri, ws + si, self.cs]
+        yield from self.do[self.ni, self.ps, self.qs, self.ks]
 
 
     @property
@@ -252,26 +389,52 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
 
     hblk = st
     wblk = st
-    nblk = int(max(1, arch.ncols // n))
+    cols_per_didw = arch.ncols // 2
+    nblk = 1
 
     wl = M.WorkList.from_arch(arch, [ti, tw, to, tdi, tdw, tdo])
-    for ni, col in enumerate(range(0, arch.ncols, nblk)):
-        ncols = min(nblk, arch.ncols - col)
-        wl.flatmap_place([
-            [
-                Conv2DDiTile(
-                    arch, conv.dtype,
-                    conv, tdi, tw, tdo, False, ni,
-                    Slice.blk(bh, conv.h + pad, hblk),
-                    Slice.blk(bw, conv.w + pad, wblk),
-                    Slice.blk(bc, conv.c, 16),
-                    Slice.blk(bk, conv.k, 16),
-                    conv.tr_w)
-                for bk in range(0, conv.k, 16)
-            ]
-            for bh in range(pad, conv.h + pad, hblk)
-            for bw in range(pad, conv.w + pad, wblk)
-            for bc in range(0, conv.c, 16)
-        ], bbox=(0, arch.nrows, col, col + ncols), randomize=False)
+
+    off = wl.flatmap_place([
+        [
+            Conv2DDiTile(
+                arch, conv.dtype,
+                conv, tdi, tw, tdo, False, ni,
+                Slice.blk(bh, conv.h + pad, hblk),
+                Slice.blk(bw, conv.w + pad, wblk),
+                Slice.blk(bc, conv.c, 16),
+                Slice.blk(bk, conv.k, 16))
+            for bk in range(0, conv.k, 16)
+        ]
+        for ni in range(0, n, nblk)
+        for bh in range(pad, conv.h + pad, hblk)
+        for bw in range(pad, conv.w + pad, wblk)
+        for bc in range(0, conv.c, 16)
+    ], bbox=None, randomize=False)
+
+    wl.flatmap_place([
+        [
+            Conv2DDwTile(
+                arch, conv.dtype,
+                conv, ti, tdw, tdo, False, ni,
+                Slice.blk(bp, conv.p, 16),
+                Slice.blk(bq, conv.q, 16),
+                Slice.blk(br, conv.r, 1),
+                Slice.blk(bs, conv.s, 1),
+                Slice.blk(bc, conv.c, 1),
+                Slice.blk(bk, conv.k, 32))
+            for ni in range(0, conv.n, 1)
+            for bp in range(0, conv.p, 16)
+            for bq in range(0, conv.q, 16)
+        ]
+        for bc in range(0, conv.c, 1)
+        for br in range(0, conv.r, 1)
+        for bs in range(0, conv.s, 1)
+        for bk in range(0, conv.k, 32)
+    ], offset=off, randomize=False)
 
     return wl
+
+
+@M.register_placement('pg', [OracleArch, BgroupArch], Conv2DBwd)
+def place_conv2d_profiled(arch : Arch, conv : Conv2DBwd):
+    return profiled_placement(arch, conv, place_conv2d_bwd_flatmap)

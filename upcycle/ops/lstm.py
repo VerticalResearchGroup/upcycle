@@ -26,6 +26,18 @@ class Lstm(Operator):
             # Other ops not counted but are insignificant
         ])
 
+
+@operator
+@dataclass(frozen=True)
+@register_backward(Lstm)
+class LstmBwd(Lstm):
+    @property
+    def flops(self): return super().flops * 2
+
+    @staticmethod
+    def from_forward(l : Lstm):
+        return LstmBwd(l.dtype, False, l.n, l.s, l.d, l.h, l.tr_xh, l.tr_wu)
+
 @dataclass(frozen=True)
 class LstmMatmul(M.WorkItemPerfectCompute):
     lstm : Lstm
@@ -86,8 +98,8 @@ class LstmBackend(M.WorkItemPerfectCompute):
     @property
     def write_trace(self): raise NotImplementedError()
 
-def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si, hd, bbox=None):
-    wl.flatmap_place([
+def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si, hd, offset=0, bbox=None):
+    return wl.flatmap_place([
         [
             LstmMatmul(
                 arch, lstm.dtype,
@@ -99,10 +111,10 @@ def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si,
         ]
         for bm in range(0, lstm.n, 16)
         for bn in range(0, 4 * lstm.h, 8)
-    ], bbox=bbox)
+    ], offset=offset, bbox=bbox)
 
-def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc, th, si, bbox=None):
-    wl.flatmap_place([
+def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc, th, si, offset=0, bbox=None):
+    return wl.flatmap_place([
         [
             LstmBackend(
                 arch, lstm.dtype,
@@ -112,7 +124,7 @@ def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc
         ]
         for bn in range(0, lstm.n, 1)
         for bh in range(0, lstm.h, 32)
-    ], bbox=bbox)
+    ], offset=offset, bbox=bbox)
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], [Lstm])
 def place_lstm_flatmap(arch : Arch, lstm : Lstm):
@@ -135,11 +147,13 @@ def place_lstm_flatmap(arch : Arch, lstm : Lstm):
     wl = M.WorkList.from_arch(arch, [tc, tx, th, txp, thp, tw, tu])
 
     cols_x = int(d / (d + h) * arch.ncols)
+    off1 = 0
+    off2 = 0
 
     for si in range(s):
-        flatmap_lstm_mm(arch, lstm, wl, tx, tw, txp, si, d, bbox=(0, arch.nrows, 0, cols_x))
-        flatmap_lstm_mm(arch, lstm, wl, th, tu, thp, si, h, bbox=(0, arch.nrows, cols_x, arch.ncols))
-        flatmap_lstm_backend(arch, lstm, wl, txp, thp, tc, th, si)
+        off1 += flatmap_lstm_mm(arch, lstm, wl, tx, tw, txp, si, d, offset=off1)
+        off1 += flatmap_lstm_mm(arch, lstm, wl, th, tu, thp, si, h, offset=off1)
+        off2 += flatmap_lstm_backend(arch, lstm, wl, txp, thp, tc, th, si, offset=off2)
 
     return wl
 

@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from random import shuffle
 from typing import Callable, Iterator
+import multiprocessing
 import numpy as np
 import itertools
 import functools
 import logging
+import gc
 
 from ..common import *
 from . import cache
@@ -163,19 +165,24 @@ class WorkList:
                 self.contract1d_place(row, vtiles[row_i])
             off += ntiles
 
-    def flatmap_place(self, vtiles : list[list[WorkItem]], bbox=None, randomize=False):
+    def flatmap_place(self, vtiles : list[list[WorkItem]], offset=0, bbox=None, randomize=False):
         if bbox is None: bbox = (0, self.arch.nrows, 0, self.arch.ncols)
         if randomize: shuffle(vtiles)
+        if len(bbox) == 2: bbox = (bbox[0], bbox[0] + 1, bbox[1], bbox[1] + 1)
+
+        logger.debug(f'flatmap_place: {len(vtiles)} lists onto {bbox} (Offset = {offset})')
 
         bbox_nrows = bbox[1] - bbox[0]
         bbox_ncols = bbox[3] - bbox[2]
         bbox_ntiles = bbox_nrows * bbox_ncols
 
         for vtid, vtile in enumerate(vtiles):
-            tid = vtid % bbox_ntiles
+            tid = (vtid + offset) % bbox_ntiles
             lr, lc = (tid // bbox_ncols), (tid % bbox_ncols)
             tl = self[bbox[0] + lr, bbox[2] + lc]
             tl += list(itertools.chain(vtile))
+
+        return len(vtiles)
 
 
     @property
@@ -214,7 +221,8 @@ def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
     global placement_funcs
     logger.debug(f'place_op(mode={mode}): {arch} {op}')
     wl : WorkList = placement_funcs[(mode, type(arch), type(op))](arch, op)
-    assert op.flops == wl.flops, f'{op.flops} != {wl.flops}, {wl.flops / op.flops}'
+    if op.flops != wl.flops:
+        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={wl.flops}, wl/op={wl.flops / op.flops}x)')
     return wl
 
 @dataclass(frozen=True)
@@ -236,6 +244,22 @@ def register_sim(archclass):
 def simulate(arch : Arch, op : Operator, *args, **kwargs) -> SimResult:
     global sim_funcs
     return sim_funcs[type(arch)](arch, op, *args, **kwargs)
+
+def test_coords(arch : Arch, mask, r, c):
+    return (mask & (1 << (r * arch.ncols + c))) != 0
+
+def _get_dests(arch : Arch, mask):
+    i = 0
+    while mask != 0:
+        if mask & 1:
+            r, c = i // arch.ncols, i % arch.ncols
+            yield r, c
+        mask >>= 1
+        i += 1
+
+@functools.lru_cache
+def get_dests(arch : Arch, mask):
+    return list(_get_dests(arch, mask))
 
 def simulate_tiles(arch : Arch, kwstats : dict, l1 : list[list], wl : WorkList, step : int):
     exec_cyc = []
@@ -259,8 +283,8 @@ def simulate_tiles(arch : Arch, kwstats : dict, l1 : list[list], wl : WorkList, 
                     l1[r][c].insert(l)
                     continue
                 l1[r][c].insert(l)
-                if l not in dest_map: dest_map[l] = []
-                dest_map[l].append((r, c))
+                if l not in dest_map: dest_map[l] = 0
+                dest_map[l] |= (1 << (r * arch.ncols + c))
 
             accesses += l1[r][c].get_accesses()
             hits += l1[r][c].get_hits()
@@ -286,6 +310,14 @@ def simulate_tiles(arch : Arch, kwstats : dict, l1 : list[list], wl : WorkList, 
 def simulate_noc(arch : Arch, dest_map : dict, addr_llc_coords : Callable):
     raise NotImplementedError()
 
+def num_steps(
+    arch : Arch,
+    op : Operator,
+    placement_mode : str = 'naive',
+    **kwargs
+):
+    return place_op(placement_mode, arch, op).nsteps
+
 def common_sim(
     arch : Arch,
     op : Operator,
@@ -295,6 +327,8 @@ def common_sim(
     l1_capacity : int = 16384,
     l1_assoc : int = 4,
     randomize_llc : bool = False,
+    counter : multiprocessing.Value = None,
+    lock : multiprocessing.Lock = None,
 ):
     cycles = 0
     kwstats = dict()
@@ -333,13 +367,16 @@ def common_sim(
     traffic = noc.zero_traffic(arch, wl.nsteps)
 
     for step in range(wl.nsteps):
-        logger.debug(f'Step {step}')
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'Step {step + 1}/{wl.nsteps}')
+            logger.debug(f'+ Simulating tiles...')
 
-        logger.debug(f'+ Simulating tiles...')
         max_exec_cyc, dest_map = tile_sim_func(arch, kwstats, l1, wl, step)
-        logger.debug(f'+ Simulating NOC...')
-        traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map, addr_llc_coords)
 
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'+ Simulating NOC...')
+
+        traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map, addr_llc_coords)
         net_latency = np.max(traffic[step, :, :, :]) / arch.noc_ports_per_dir
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -350,10 +387,12 @@ def common_sim(
         compute_cyc = max_exec_cyc
 
         del dest_map
+        gc.collect()
+
+        with lock: counter.value += 1
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f'+ Compute drain latency: {compute_cyc}')
 
     cycles += compute_cyc
-
     return SimResult(wl.nsteps, cycles, traffic, kwstats)

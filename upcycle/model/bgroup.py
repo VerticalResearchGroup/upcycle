@@ -14,38 +14,6 @@ from . import noc
 logger = logging.getLogger(__name__)
 
 @functools.lru_cache
-def make_rally_points(arch : BgroupArch):
-
-    ngr = arch.nrows // arch.grows
-    ngc = arch.ncols // arch.gcols
-
-    c_off_r = 0 #arch.grows // 2
-    c_off_c = 0 #arch.gcols // 2
-    rally_points = dict()
-    group_hops = dict()
-
-    for gr in range(ngr):
-        for gc in range(ngc):
-            r, c = gr * arch.grows, gc * arch.gcols
-            rpr, rpc = r + c_off_r, c + c_off_c
-            rally_points[(gr, gc)] = (rpr, rpc)
-            hops = []
-
-            for orow in range(arch.grows):
-                for ocol in range(arch.gcols):
-                    rr, rc = r + orow, c + ocol
-                    if rr == rpr and rc == rpc: continue
-                    hops += noc.Noc.trace_route((rpr, rpc), (rr, rc))
-
-
-            group_hops[(gr, gc)] = set(hops)
-
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f'+ Rally point: {(rpr, rpc)}, # Group Hops: {len(set(hops))}')
-
-    return rally_points, group_hops
-
-@functools.lru_cache
 def trace_group_hops(arch : BgroupArch, group, off):
     gr, gc = group
     off_r, off_c = off
@@ -80,7 +48,7 @@ def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_c
     net = BgroupNoc.from_arch(arch)
     sum_dests = 0
     sum_groups = 0
-    for line, dests in dest_map.items():
+    for line, mask in dest_map.items():
         r, c = addr_llc_coords(line)
         off = (np.random.randint(0, arch.grows), np.random.randint(0, arch.gcols))
         net[r, c].inject += 1
@@ -88,16 +56,15 @@ def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_c
         groups = set()
         seen_hops = set[(noc.Router, noc.Router)]()
 
-        for (dr, dc) in dests:
-            # logger.debug(f'++ {(r, c)} -> {(dr, dc)}')
+        for (dr, dc) in get_dests(arch, mask):
             net[dr, dc].eject += 1
             dgr = dr // arch.grows
             dgc = dc // arch.gcols
             groups.add((dgr, dgc))
+            sum_dests += 1
 
         for (dgr, dgc) in groups:
             rr, rc = net.get_rally_point((dgr, dgc), off)
-            # logger.debug(f'++ rally point: {(rr, rc)}')
 
             route = net.get_route((r, c), (rr, rc))
 
@@ -110,11 +77,9 @@ def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_c
             for (rs_coords, rd_coords) in trace_group_hops(arch, (dgr, dgc), off):
                 rs = net.__getitem__(rs_coords)
                 rd = net.__getitem__(rd_coords)
-                # logger.debug(f'+++ group hop: {(rs, rd)}')
                 net.count_hop(rs, rd)
                 if arch.line_size == 64: net.count_hop(rs, rd)
 
-        sum_dests += len(dests)
         sum_groups += len(groups)
 
     t1 = time.perf_counter()

@@ -44,6 +44,11 @@ class Slice:
     @property
     def indices(self): yield from range(self.start, self.stop, self.step)
 
+    @property
+    def blocks(self):
+        for i in range(self.start, self.stop, self.step):
+            yield i // self.step, i, min(i + self.step, self.stop)
+
 class Dtype(IntEnum):
     I8 = 1
     FP16 = 2

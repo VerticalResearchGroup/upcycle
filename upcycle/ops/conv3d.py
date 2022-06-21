@@ -11,14 +11,17 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class Conv3D(Operator):
     n : int
+
     h : int
     w : int
     d : int
     c : int
+
     p : int
     q : int
     o : int
     k : int
+
     r : int
     s : int
     t : int
@@ -35,26 +38,26 @@ class Conv3D(Operator):
 @register_backward(Conv3D)
 class Conv3DBwd(Conv3D):
     @property
-    def flops(self):
-        flops = 0
-        for hi in range(self.h):
-            for wi in range(self.w):
-                ho = hi % self.stride
-                wo = wi % self.stride
+    def flops(self): return super().flops * 2
+        # flops = 0
+        # for hi in range(self.h):
+        #     for wi in range(self.w):
+        #         ho = hi % self.stride
+        #         wo = wi % self.stride
 
-                hr = np.ceil((self.r - ho) / self.stride)
-                wr = np.ceil((self.s - wo) / self.stride)
+        #         hr = np.ceil((self.r - ho) / self.stride)
+        #         wr = np.ceil((self.s - wo) / self.stride)
 
-                flops += hr * wr * self.c * self.k * 2
+        #         flops += hr * wr * self.c * self.k * 2
 
-        return flops * self.n
+        # return flops * self.n
 
     @staticmethod
     def from_forward(c : Conv3D):
-        return Conv3DBwd(c.dtype, False, c.n, c.h, c.w, c.d, c.c, c.p, c.q, c.o, c.k, c.r, c.s, c.t, c.stride, c.tr_w)
+        return Conv3DBwd(c.dtype, False, c.n, c.h, c.w, c.d, c.c, c.p, c.q, c.o, c.k, c.r, c.s, c.t, c.stride, c.pad, c.tr_w)
 
 @dataclass(frozen=True)
-class Conv2DTile(M.WorkItemPerfectCompute):
+class Conv3DTile(M.WorkItemPerfectCompute):
     conv : Conv3D
     i : M.Tensor
     w : M.Tensor
@@ -63,9 +66,9 @@ class Conv2DTile(M.WorkItemPerfectCompute):
     ni : int
     ps : Slice
     qs : Slice
+    os : Slice
     cs : Slice
-    ks : Slice
-    tr_w : bool
+    ks : slice
 
 
     @property
@@ -73,36 +76,76 @@ class Conv2DTile(M.WorkItemPerfectCompute):
         return \
             len(self.ps) * \
             len(self.qs) * \
+            len(self.os) * \
             len(self.ks) * \
             len(self.cs) * \
-            self.conv.r * self.conv.s * 2
+            self.conv.r * self.conv.s * self.conv.t * 2
 
     @property
     def read_trace(self):
         st = self.conv.stride
-        yield from self.i[self.ni, self.ps * st, self.qs * st, self.cs]
+        yield from self.i[self.ni, self.ps * st, self.qs * st, self.os * st, self.cs]
 
-        if not self.tr_w:
-            yield from self.w[:, :, self.ks, self.cs]
-        else:
-            yield from self.w[:, :, self.cs, self.ks]
+        if not self.conv.tr_w: yield from self.w[:, :, :, self.ks, self.cs]
+        else: yield from self.w[:, :, :, self.cs, self.ks]
 
     @property
     def write_trace(self):
         if not self.write: return
         raise NotImplementedError()
 
-def make_conv3d_tensors(conv : Conv3D):
+def make_conv3d_tensors(arch : Arch, conv : Conv3D):
     ti = M.Tensor(
+        arch,
         1,
         conv.dtype,
         (conv.n, conv.h + 2 * conv.pad, conv.w + 2 * conv.pad, conv.d + 2 * conv.pad, conv.c))
 
     tw = M.Tensor(
+        arch,
         2,
         conv.dtype,
         (conv.r, conv.s, conv.t, conv.k, conv.c) if not conv.tr_w \
             else (conv.r, conv.s, conv.t, conv.c, conv.k))
 
-    to = M.Tensor(3, conv.dtype, (conv.n, conv.p, conv.q, conv.o, conv.k))
+    to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.o, conv.k))
     return ti, tw, to
+
+@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv3D)
+def place_conv3d_flatmap(arch : Arch, conv : Conv3D):
+    ti, tw, to = make_conv3d_tensors(arch, conv)
+    npixels = conv.n * conv.p * conv.q
+
+    if npixels > arch.ntiles: kblk = 128
+    elif npixels > arch.ntiles // 4: kblk = 64
+    else: kblk = 8
+
+    oblk = int(max(1, 32 / kblk))
+    # nblk = int(max(1, arch.ncols // conv.n))
+    off = 0
+
+    wl = M.WorkList.from_arch(arch, [ti, tw, to])
+    for ni in range(0, conv.n):
+        off += wl.flatmap_place([
+            [
+                Conv3DTile(
+                    arch, conv.dtype,
+                    conv, ti, tw, to, False, ni,
+                    Slice.blk(bp, conv.p, 1),
+                    Slice.blk(bq, conv.q, 1),
+                    Slice.blk(bo, conv.o, oblk),
+                    Slice.blk(bc, conv.c, 16),
+                    Slice.blk(bk, conv.k, kblk))
+                for bc in range(0, conv.c, 16)
+            ]
+            for bp in range(0, conv.p, 1)
+            for bq in range(0, conv.q, 1)
+            for bo in range(0, conv.o, oblk)
+            for bk in range(0, conv.k, kblk)
+        ], offset=off, bbox=None, randomize=False)
+
+    return wl
+
+@M.register_placement('pg', [OracleArch, BgroupArch], Conv3D)
+def place_conv3d_profiled(arch : Arch, conv : Conv3D):
+    return profiled_placement(arch, conv, place_conv3d_flatmap)

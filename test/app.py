@@ -6,6 +6,7 @@ import logging
 import multiprocessing
 import time
 import argparse
+import tqdm
 
 blue = '\x1b[38;5;39m'
 green = '\033[92m'
@@ -18,16 +19,27 @@ fmt = U.logutils.CustomFormatter()
 ch.setFormatter(fmt)
 logging.basicConfig(level=logging.INFO, handlers=[ch])
 
+def init_pool_processes(c, l):
+    global counter
+    global lock
+
+    counter = c
+    lock = l
+
 def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     logger.debug(f'Simulating {op}...')
+    global counter
+    global lock
+    sim_kwargs['counter'] = counter
+    sim_kwargs['lock'] = lock
     result = U.model.simulate(arch, op, **sim_kwargs)
     logger.debug(f'Finished {op}')
     return result
 
-def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
 
     gops = int(op.flops / result.cycles * arch.freq / 1e9)
-    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(U.Dtype.I8) * 100, 2)
+    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
     logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
     if details:
         if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
@@ -39,14 +51,15 @@ def log_layer(arch : U.Arch, app : U.apps.Trace, i, op : U.ops.Operator, result 
             logger.info(f'+ (Max) Avg Groups Per Line: {np.max(result.kwstats["avg_groups"])}')
 
 
-def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args, verbose=True):
+def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
     layers = []
     cache = {}
+    total_steps = sum(U.model.num_steps(arch, op, **sim_args) for op in app.oplist)
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()
         if op not in cache:
-            result = simulate_layer(arch, op, sim_args)
+            result = simulate_layer(None, arch, op, sim_args)
             cache[op] = result
             hit = False
         else:
@@ -56,17 +69,35 @@ def simulate_app(arch : U.Arch, app : U.apps.Trace, sim_args, verbose=True):
         layers.append(result)
 
         t1 = time.perf_counter_ns()
-        if verbose: log_layer(arch, app, i, op, result, t1 - t0, details=not hit)
+        if verbose: log_layer(arch, dtype, app, i, op, result, t1 - t0, details=not hit)
 
     tt1 = time.perf_counter_ns()
     return tt1 - tt0, layers
 
-def simulate_app_par(parallel : int, arch : U.Arch, app : U.apps.Trace, sim_args, verbose=True):
-    pool = multiprocessing.Pool(parallel)
+def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
+    counter = multiprocessing.Value('i', 0)
+    lock = multiprocessing.Lock()
+
+    pool = multiprocessing.Pool(
+        parallel, initializer=init_pool_processes, initargs=(counter, lock))
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
-    unique_results = pool.map(
+    total_steps = sum(U.model.num_steps(arch, op, **sim_args) for op in unique_ops)
+
+    progress = tqdm.tqdm(total=total_steps, unit='steps')
+
+    result = pool.map_async(
         functools.partial(simulate_layer, arch, sim_kwargs=sim_args), unique_ops)
+
+    last = 0
+    while not result.ready():
+        result.wait(0.5)
+        cur = counter.value
+        progress.update(cur - last)
+        last = cur
+
+    progress.close()
+    unique_results = result.get()
 
     cache = {op: result for op, result in zip(unique_ops, unique_results)}
     tt1 = time.perf_counter_ns()
@@ -75,7 +106,7 @@ def simulate_app_par(parallel : int, arch : U.Arch, app : U.apps.Trace, sim_args
     for i, op in enumerate(app.oplist):
         result = cache[op]
         layers.append(result)
-        if verbose: log_layer(arch, app, i, op, result)
+        if verbose: log_layer(arch, dtype, app, i, op, result)
 
     return tt1 - tt0, layers
 
@@ -85,6 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--arch', type=str, default='oracle')
     parser.add_argument('-d', '--dtype', type=str, default='')
     parser.add_argument('-t', '--train', action='store_true')
+    parser.add_argument('-T', '--bwd-only', action='store_true')
     parser.add_argument('-i', '--infer', action='store_true')
     parser.add_argument('-a', '--app', type=str, default='resnet50')
     parser.add_argument('-b', '--batch', type=str, default='1')
@@ -105,7 +137,7 @@ if __name__ == '__main__':
     assert args.train or args.infer
 
     if args.debug:
-        assert not args.parallel, f'Cannot debug in parallel'
+        assert args.parallel == 1, f'Cannot debug in parallel'
         logger.setLevel(logging.DEBUG)
 
     if args.arch == 'oracle':
@@ -116,7 +148,7 @@ if __name__ == '__main__':
 
 
     if args.infer:
-        if type(args.batch) is str:
+        if args.batch in {'offline', 'online'}:
             batch = U.apps.infer_batch_sizes[args.batch][args.app]
         else: batch = int(args.batch)
 
@@ -129,7 +161,7 @@ if __name__ == '__main__':
         app.infer()
 
     else:
-        if type(args.batch) is str:
+        if args.batch in {'large', 'small'}:
             batch = U.apps.train_batch_sizes[args.batch][args.app]
         else: batch = int(args.batch)
 
@@ -137,10 +169,9 @@ if __name__ == '__main__':
             dtype = U.apps.train_dtype[args.app]
         else: dtype = U.Dtype.from_str(args.dtype)
 
-        app = U.apps.infer_apps_by_name[args.app](dtype, n=batch)
-        app = U.apps.train_apps_by_name[args.app](dtype, n=args.batch)
+        app = U.apps.train_apps_by_name[args.app](dtype, n=batch)
         if args.layer is not None: app = U.apps.Trace([app.oplist[args.layer]])
-        app.train()
+        app.train(args.bwd_only)
 
     logging.info(f'App: {args.app} ({"train" if args.train else "infer"})')
     logging.info(f'Dtype: {dtype}, Batch Size: {batch}')
@@ -152,9 +183,9 @@ if __name__ == '__main__':
         l1_capacity=args.l1_capacity,
         l1_assoc=args.l1_assoc)
 
-    if args.parallel > 1:
-        time_ns, layers = simulate_app_par(args.parallel, arch, app, sim_args, args.verbose)
-    else: time_ns, layers = simulate_app(arch, app, sim_args, args.verbose)
+    # if args.parallel > 1:
+    time_ns, layers = simulate_app_par(args.parallel, arch, dtype, app, sim_args, args.verbose)
+    # else: time_ns, layers = simulate_app(arch, dtype, app, sim_args, args.verbose)
 
     cycles = sum(result.cycles for result in layers)
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')

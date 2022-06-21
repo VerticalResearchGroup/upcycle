@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# set -x
+APPS=${APPS:-bert-large-512}
+LS=${LS:-32}
+PORTS=${PORTS:-1 2}
+ARCHS=${ARCH:-oracle bg}
+
+for APP in $APPS; do
+    for LS in $LS; do
+        for PORT in $PORTS; do
+            for ARCH in $ARCHS; do
+                python -OO test/app.py -t -a $APP -b small --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                echo ""
+                python -OO test/app.py -t -a $APP -b large --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                echo ""
+            done
+        done
+    done
+done

@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 def simulate_oracle_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_coords : Callable):
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
-    for line, dests in dest_map.items():
+    for line, mask in dest_map.items():
         r, c = addr_llc_coords(line)
         net[r, c].inject += 1
 
-        for (dr, dc) in dests: net[dr, dc].eject += 1
+        for (dr, dc) in get_dests(arch, mask): net[dr, dc].eject += 1
 
         routes = [
             net.get_route((r, c), (dr, dc))
-            for (dr, dc) in dests
+            for (dr, dc) in get_dests(arch, mask)
         ]
 
         seen_hops = set[(noc.Router, noc.Router)]()
