@@ -19,6 +19,10 @@ fmt = U.logutils.CustomFormatter()
 ch.setFormatter(fmt)
 logging.basicConfig(level=logging.INFO, handlers=[ch])
 
+if __name__ == '__main__':
+    counter = None
+    lock = None
+
 def init_pool_processes(c, l):
     global counter
     global lock
@@ -49,6 +53,8 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
             logger.info(f'+ (Max) Avg Dests Per Line: {np.max(result.kwstats["avg_dests"])}')
         if 'avg_groups' in result.kwstats:
             logger.info(f'+ (Max) Avg Groups Per Line: {np.max(result.kwstats["avg_groups"])}')
+        if 'max_lines' in result.kwstats:
+            logger.info(f'+ (Max) lines transmitted in one step : {np.max(result.kwstats["max_lines"])}')
 
 
 def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
@@ -59,7 +65,7 @@ def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, v
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()
         if op not in cache:
-            result = simulate_layer(None, arch, op, sim_args)
+            result = simulate_layer(arch, op, sim_args)
             cache[op] = result
             hit = False
         else:
@@ -84,7 +90,7 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
     unique_ops = list(app.unique_ops)
     total_steps = sum(U.model.num_steps(arch, op, **sim_args) for op in unique_ops)
 
-    progress = tqdm.tqdm(total=total_steps, unit='steps')
+    progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 
     result = pool.map_async(
         functools.partial(simulate_layer, arch, sim_kwargs=sim_args), unique_ops)
@@ -141,10 +147,15 @@ if __name__ == '__main__':
         logger.setLevel(logging.DEBUG)
 
     if args.arch == 'oracle':
-        arch = U.OracleArch(2.4e9, 512, 1, 32, 64, args.noc_ports, args.line_size)
+        arch = U.OracleArch(
+            2.4e9, 512, 1, 32, 64,
+            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc)
     elif args.arch == 'bg':
         [grows, gcols] = list(map(int, args.bgsize.split(',')))
-        arch = U.BgroupArch(2.4e9, 512, 1, 32, 64, args.noc_ports, args.line_size, grows, gcols)
+        arch = U.BgroupArch(
+            2.4e9, 512, 1, 32, 64,
+            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc,
+            grows, gcols)
 
 
     if args.infer:
@@ -178,14 +189,10 @@ if __name__ == '__main__':
     logging.info(f'App Ops: {app.flops / 1e9} G')
     logging.info(f'Arch: {arch}')
 
-    sim_args = dict(
-        placement_mode=args.placement_mode,
-        l1_capacity=args.l1_capacity,
-        l1_assoc=args.l1_assoc)
+    sim_args = dict(placement_mode=args.placement_mode)
 
-    # if args.parallel > 1:
-    time_ns, layers = simulate_app_par(args.parallel, arch, dtype, app, sim_args, args.verbose)
-    # else: time_ns, layers = simulate_app(arch, dtype, app, sim_args, args.verbose)
+    if args.parallel > 1: time_ns, layers = simulate_app_par(args.parallel, arch, dtype, app, sim_args, args.verbose)
+    else: time_ns, layers = simulate_app(arch, dtype, app, sim_args, args.verbose)
 
     cycles = sum(result.cycles for result in layers)
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')
@@ -193,3 +200,11 @@ if __name__ == '__main__':
     logging.info(f'+ Throughput: {green}{arch.freq / cycles * batch} samp/sec{reset}, {blue}{app.flops / cycles / arch.ntiles / arch.peak_opc(dtype) * 100} %{reset}')
     logging.debug(f'+ Compute: {app.flops / cycles} flops/cyc')
     logging.debug(f'+ Compute: {app.flops / cycles / arch.ntiles} flops/cyc/core')
+
+    if args.verbose:
+        max_lines = max(result.kwstats.get('max_lines', -1) for result in layers)
+        if max_lines > 0:
+            logger.info(f'+ Max Lines transmitted in one step: {max_lines}')
+        tot_lines = max(result.kwstats.get('tot_lines', -1) for result in layers)
+        if tot_lines > 0:
+            logger.info(f'+ Total Lines transmitted: {tot_lines} ({tot_lines * 2 / 2**20} MB)')

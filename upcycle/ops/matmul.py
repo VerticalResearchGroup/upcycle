@@ -81,8 +81,8 @@ class MatmulTile(M.WorkItemPerfectCompute):
         yield from self.c[self.li, self.ms, self.ns]
 
 
-def flatmap_matmul(arch : Arch, mm : Matmul, wl : M.WorkList, a, b, c, bbox=None):
-    wl.flatmap_place([
+def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None, offset=0):
+    return sim.flatmap_place([
         [
             MatmulTile(
                 arch, mm.dtype,
@@ -95,10 +95,10 @@ def flatmap_matmul(arch : Arch, mm : Matmul, wl : M.WorkList, a, b, c, bbox=None
         for bm in range(0, mm.m, 16)
         for bn in range(0, mm.n, 8)
         for li in range(mm.l)
-    ], bbox=bbox)
+    ], offset=offset, bbox=bbox)
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], [Matmul, Linear])
-def place_matmul_flatmap(arch : Arch, mm : Matmul):
+def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
     n = mm.n
@@ -108,17 +108,15 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul):
     b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
     c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
 
-    wl = M.WorkList.from_arch(arch, [a, b, c])
-    flatmap_matmul(arch, mm, wl, a, b, c)
+    flatmap_matmul(arch, mm, sim, a, b, c)
 
-    return wl
 
 @M.register_placement('pg', [OracleArch, BgroupArch], [Matmul, Linear])
-def place_matmul_profiled(arch : Arch, mm : Matmul):
-    return profiled_placement(arch, mm, place_matmul_flatmap)
+def place_matmul_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
+    return profiled_placement(arch, mm, sim, place_matmul_flatmap)
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], [MatmulBwd, LinearBwd])
-def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd):
+def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     l = mm.l
     m = mm.m
     n = mm.n
@@ -126,17 +124,14 @@ def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd):
 
     a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
     b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
+    # c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
     da = M.Tensor(arch, 4, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
     db = M.Tensor(arch, 5, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
     dc = M.Tensor(arch, 6, mm.dtype, (l, m, n))
 
-    wl = M.WorkList.from_arch(arch, [a, b, c, da, db, dc])
-    flatmap_matmul(arch, mm.da, wl, dc, b, da, bbox=(0, arch.nrows, 0, arch.ncols // 2))
-    flatmap_matmul(arch, mm.db, wl, a, dc, db, bbox=(0, arch.nrows, arch.ncols // 2, arch.ncols))
-
-    return wl
+    off = flatmap_matmul(arch, mm.da, sim, dc, b, da)
+    flatmap_matmul(arch, mm.db, sim, a, dc, db, offset=off)
 
 @M.register_placement('pg', [OracleArch, BgroupArch], [MatmulBwd, LinearBwd])
-def place_matmul_bwd_profiled(arch : Arch, mm : Matmul):
-    return profiled_placement(arch, mm, place_matmul_bwd_flatmap)
+def place_matmul_bwd_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
+    return profiled_placement(arch, mm, sim, place_matmul_bwd_flatmap)

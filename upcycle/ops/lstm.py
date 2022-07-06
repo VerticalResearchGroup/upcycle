@@ -98,8 +98,8 @@ class LstmBackend(M.WorkItemPerfectCompute):
     @property
     def write_trace(self): raise NotImplementedError()
 
-def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si, hd, offset=0, bbox=None):
-    return wl.flatmap_place([
+def flatmap_lstm_mm(arch : Arch, lstm : Lstm, sim : M.SimBase, txh, twu, to, si, hd, offset=0, bbox=None):
+    return sim.flatmap_place([
         [
             LstmMatmul(
                 arch, lstm.dtype,
@@ -113,8 +113,8 @@ def flatmap_lstm_mm(arch : Arch, lstm : Lstm, wl : M.WorkList, txh, twu, to, si,
         for bn in range(0, 4 * lstm.h, 8)
     ], offset=offset, bbox=bbox)
 
-def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc, th, si, offset=0, bbox=None):
-    return wl.flatmap_place([
+def flatmap_lstm_backend(arch : Arch, lstm : Lstm, sim : M.SimBase, txp, thp, tc, th, si, offset=0, bbox=None):
+    return sim.flatmap_place([
         [
             LstmBackend(
                 arch, lstm.dtype,
@@ -127,7 +127,7 @@ def flatmap_lstm_backend(arch : Arch, lstm : Lstm, wl : M.WorkList, txp, thp, tc
     ], offset=offset, bbox=bbox)
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], [Lstm])
-def place_lstm_flatmap(arch : Arch, lstm : Lstm):
+def place_lstm_flatmap(arch : Arch, lstm : Lstm, sim : M.SimBase):
     logger.debug(f'=== Place LSTM ===')
     logger.debug(f'+ LSTM: {lstm}')
 
@@ -144,19 +144,18 @@ def place_lstm_flatmap(arch : Arch, lstm : Lstm):
     tw = M.Tensor(arch, 4, lstm.dtype, (s, h * 4, d) if lstm.tr_wu else (s, d, h * 4))
     tu = M.Tensor(arch, 5, lstm.dtype, (s, h * 4, h) if lstm.tr_wu else (s, h, h * 4))
 
-    wl = M.WorkList.from_arch(arch, [tc, tx, th, txp, thp, tw, tu])
 
     cols_x = int(d / (d + h) * arch.ncols)
     off1 = 0
     off2 = 0
 
     for si in range(s):
-        off1 += flatmap_lstm_mm(arch, lstm, wl, tx, tw, txp, si, d, offset=off1)
-        off1 += flatmap_lstm_mm(arch, lstm, wl, th, tu, thp, si, h, offset=off1)
-        off2 += flatmap_lstm_backend(arch, lstm, wl, txp, thp, tc, th, si, offset=off2)
+        off1 += flatmap_lstm_mm(arch, lstm, sim, tx, tw, txp, si, d, offset=off1)
+        off1 += flatmap_lstm_mm(arch, lstm, sim, th, tu, thp, si, h, offset=off1)
+        off2 += flatmap_lstm_backend(arch, lstm, sim, txp, thp, tc, th, si, offset=off2)
 
-    return wl
+    return sim
 
 @M.register_placement('pg', [OracleArch, BgroupArch], [Lstm])
-def place_lstm_profiled(arch : Arch, lstm : Lstm):
-    return profiled_placement(arch, lstm, place_lstm_flatmap)
+def place_lstm_profiled(arch : Arch, lstm : Lstm, sim : M.SimBase):
+    return profiled_placement(arch, lstm, sim, place_lstm_flatmap)

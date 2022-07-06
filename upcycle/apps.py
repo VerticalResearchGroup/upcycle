@@ -343,32 +343,32 @@ def dlrm(dtype, n, tok_per_samp_frac=0.2):
         ops.Linear(dtype, True, 1, n, 128, 256, False, False),
 
         # Sparse Feature Layers
-        ops.Embedding(dtype, True, n, 39884406, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 39043, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 17289, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 7420, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 20263, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 3, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 7120, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 1543, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 63, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 38532951, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 2953546, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 403346, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 10, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 2208, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 11938, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 155, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 4, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 976, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 14, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 39979771, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 25641295, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 39664984, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 585935, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 12972, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 108, 128, tok_per_samp_frac),
-        ops.Embedding(dtype, True, n, 36, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 39884406, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 39043, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 17289, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 7420, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 20263, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 3, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 7120, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 1543, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 63, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 38532951, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 2953546, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 403346, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 10, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 2208, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 11938, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 155, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 4, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 976, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 14, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 39979771, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 25641295, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 39664984, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 585935, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 12972, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 108, 128, tok_per_samp_frac),
+        # ops.Embedding(dtype, True, n, 36, 128, tok_per_samp_frac),
 
         # Interact Features is just a batch matmul
         ops.Matmul(dtype, True, n, 27, 27, 128, False, False),
@@ -383,6 +383,7 @@ def dlrm(dtype, n, tok_per_samp_frac=0.2):
     ])
 
 app_infer_flops = {
+    'testmatmul': testmatmul(Dtype.I8, 1).flops,
     'bert-large-squad-avg': bertlarge(Dtype.I8, 1, 178).flops,
     'resnet50': resnet50(Dtype.I8, 1).flops,
     'unet': unet3d(Dtype.I8, 1).flops,
@@ -393,6 +394,7 @@ app_infer_flops = {
 
 infer_apps_by_name = {
     'testconv': testconv_fwd,
+    'testmatmul': testmatmul,
     'unet': unet3d,
     'bert-large-squad-384': bertlarge384,
     'bert-large-squad-avg': bertlarge_squadavg,
@@ -406,6 +408,7 @@ infer_apps_by_name = {
 infer_batch_sizes = {
     'online': {
         'testconv': 1,
+        'testmatmul': 1,
         'unet': 1,
         'bert-large-squad-avg': 1,
         'resnet50': 1,
@@ -415,6 +418,7 @@ infer_batch_sizes = {
     },
     'offline': {
         'testconv': 8,
+        'testmatmul': 8,
         'unet': 8,
         'bert-large-squad-avg': 8,
         'resnet50': 8,
@@ -426,6 +430,7 @@ infer_batch_sizes = {
 
 infer_dtype = {
     'testconv': Dtype.I8,
+    'testmatmul': Dtype.I8,
     'unet': Dtype.I8,
     'bert-large-squad-avg': Dtype.I8,
     'resnet50': Dtype.I8,

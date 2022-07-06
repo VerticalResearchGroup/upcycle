@@ -43,54 +43,56 @@ class BgroupNoc(noc.Noc):
         return gr * self.arch.grows + off_r, gc * self.arch.gcols + off_c
 
 
-def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict, addr_llc_coords : Callable):
+def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict):
     t0 = time.perf_counter()
     net = BgroupNoc.from_arch(arch)
     sum_dests = 0
     sum_groups = 0
-    for line, mask in dest_map.items():
-        r, c = addr_llc_coords(line)
-        off = (np.random.randint(0, arch.grows), np.random.randint(0, arch.gcols))
-        net[r, c].inject += 1
+    if dest_map is not None:
+        for line, mask in dest_map.dests.items():
+            r, c = arch.addr_llc_coords(line)
+            off = (np.random.randint(0, arch.grows), np.random.randint(0, arch.gcols))
+            net[r, c].inject += 1
 
-        groups = set()
-        seen_hops = set[(noc.Router, noc.Router)]()
+            groups = set()
+            seen_hops = set[(noc.Router, noc.Router)]()
 
-        for (dr, dc) in get_dests(arch, mask):
-            net[dr, dc].eject += 1
-            dgr = dr // arch.grows
-            dgc = dc // arch.gcols
-            groups.add((dgr, dgc))
-            sum_dests += 1
+            for (dr, dc) in get_dests(arch, mask):
+                net[dr, dc].eject += 1
+                dgr = dr // arch.grows
+                dgc = dc // arch.gcols
+                groups.add((dgr, dgc))
+                sum_dests += 1
 
-        for (dgr, dgc) in groups:
-            rr, rc = net.get_rally_point((dgr, dgc), off)
+            for (dgr, dgc) in groups:
+                rr, rc = net.get_rally_point((dgr, dgc), off)
 
-            route = net.get_route((r, c), (rr, rc))
+                route = net.get_route((r, c), (rr, rc))
 
-            for (rs, rd) in net.route_hops(route):
-                if (rs, rd) in seen_hops: continue
-                seen_hops.add((rs, rd))
-                net.count_hop(rs, rd)
-                if arch.line_size == 64: net.count_hop(rs, rd)
+                for (rs, rd) in net.route_hops(route):
+                    if (rs, rd) in seen_hops: continue
+                    seen_hops.add((rs, rd))
+                    net.count_hop(rs, rd)
+                    if arch.line_size == 64: net.count_hop(rs, rd)
 
-            for (rs_coords, rd_coords) in trace_group_hops(arch, (dgr, dgc), off):
-                rs = net.__getitem__(rs_coords)
-                rd = net.__getitem__(rd_coords)
-                net.count_hop(rs, rd)
-                if arch.line_size == 64: net.count_hop(rs, rd)
+                for (rs_coords, rd_coords) in trace_group_hops(arch, (dgr, dgc), off):
+                    rs = net.__getitem__(rs_coords)
+                    rd = net.__getitem__(rd_coords)
+                    net.count_hop(rs, rd)
+                    if arch.line_size == 64: net.count_hop(rs, rd)
 
-        sum_groups += len(groups)
+            sum_groups += len(groups)
 
     t1 = time.perf_counter()
-    avg_dests = np.round(sum_dests / max(1, len(dest_map)), 2)
-    avg_groups = np.round(sum_groups / max(1, len(dest_map)), 2)
+    if dest_map is not None:
+        avg_dests = np.round(sum_dests / max(1, len(dest_map)), 2)
+        avg_groups = np.round(sum_groups / max(1, len(dest_map)), 2)
 
-    if 'avg_dests' not in kwstats: kwstats['avg_dests'] = []
-    kwstats['avg_dests'].append(avg_dests)
+        if 'avg_dests' not in kwstats: kwstats['avg_dests'] = []
+        kwstats['avg_dests'].append(avg_dests)
 
-    if 'avg_groups' not in kwstats: kwstats['avg_groups'] = []
-    kwstats['avg_groups'].append(avg_groups)
+        if 'avg_groups' not in kwstats: kwstats['avg_groups'] = []
+        kwstats['avg_groups'].append(avg_groups)
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f'+ Noc simulation took {t1 - t0}s')

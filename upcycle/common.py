@@ -49,6 +49,12 @@ class Slice:
         for i in range(self.start, self.stop, self.step):
             yield i // self.step, i, min(i + self.step, self.stop)
 
+def blkdiv(n, b):
+    nn = n // b
+    for i in range(b):
+        r = nn + (1 if i < n % b else 0)
+        yield r
+
 class Dtype(IntEnum):
     I8 = 1
     FP16 = 2
@@ -72,6 +78,15 @@ class Arch:
     ncols : int
     noc_ports_per_dir : int = 1
     line_size : int = 64
+    l1_capacity : int = 16384
+    l1_assoc : int = 16
+
+    @property
+    def l1_nset(self):
+        return int(self.l1_capacity / self.line_size / self.l1_assoc)
+
+    @property
+    def lbits(self): return int(np.ceil(np.log2(self.line_size)))
 
     def __post_init__(self):
         if self.noc_ports_per_dir > 1:
@@ -84,6 +99,14 @@ class Arch:
 
     def peak_opc(self, dtype : Dtype):
         return self.vlen(dtype) * self.macs * 2
+
+    def tile_coords(self, tid):
+        assert tid >= 0 and tid < self.ntiles
+        return (tid // self.ncols), (tid % self.ncols)
+
+    def addr_llc_coords(self, addr : int):
+        line = addr >> self.lbits
+        return self.tile_coords(line & (self.ntiles - 1))
 
 
 @dataclass(frozen=True)

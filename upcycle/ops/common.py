@@ -58,12 +58,13 @@ def placement_profile(archclasses, opprof):
 
     return decorator
 
-def profiled_placement(arch, op, fallback):
+def profiled_placement(arch, op, sim, fallback):
     global pg_placement_map
     key = (type(arch), type(op))
     if key not in pg_placement_map:
         logger.debug(f'No placement profiles for {key}. Using Fallback...')
-        return fallback(arch, op)
+        fallback(arch, op, sim)
+        return
 
     best_score, best_func = -1, None
 
@@ -78,8 +79,9 @@ def profiled_placement(arch, op, fallback):
 
     if best_func is None:
         logger.debug(f'No valid profile for {op}. Using Fallback...')
-        return fallback(arch, op)
+        fallback(arch, op, sim)
+        return
 
     logger.debug(f'Profiled placement: {op} -> {best_func.__name__} (score = {best_score})')
+    best_func(arch, op, sim)
 
-    return best_func(arch, op)

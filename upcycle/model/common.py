@@ -10,6 +10,7 @@ import gc
 
 from ..common import *
 from . import cache
+from . import destlist
 from . import noc
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ def _gen_ids_rec(shape, strides, idx):
 #         list(map(lambda i: i + off, _gen_ids_rec(shape, strides, di + 1, idx)))
 #         for off in _gen_offs(strides, di, d)
 #     ], start=[])
+
+class WorkList: ...
 
 
 @dataclass(frozen=True)
@@ -116,86 +119,6 @@ class WorkItemPerfectCompute(WorkItem):
     def exec_lat(self): return self.flops / self.arch.peak_opc(self.dtype)
 
 
-@dataclass
-class WorkList:
-    arch : Arch
-    tensors : list[Tensor]
-    tiles : list[list[list[WorkItem]]]
-
-    @property
-    def flattiles(self):
-        for row in self.tiles:
-            for tile in row:
-                yield tile
-
-    @property
-    def workitems(self):
-        for row in self.tiles:
-            for tile in row:
-                yield from tile
-
-    @staticmethod
-    def from_arch(arch : Arch, tensors : list[Tensor]):
-        return WorkList(
-            arch,
-            tensors,
-            [[list() for _ in range(arch.ncols)] for _ in range(arch.nrows)])
-
-
-    def contract1d_place(self, row, vtiles : list[list[WorkItem]]):
-        wi_per_col = len(vtiles) // self.arch.nrows
-        off = 0
-
-        for col in range(self.arch.ncols):
-            ntiles = wi_per_col
-            if col < (len(vtiles) % self.arch.ncols): ntiles += 1
-            tl = self[row, col]
-            tl += list(itertools.chain(*vtiles[off : off + ntiles]))
-            off += ntiles
-
-
-    def contract2d_place(self, vtiles : list[list[list[WorkItem]]]):
-        wi_per_row = len(vtiles) // self.arch.nrows
-        off = 0
-
-        for row in range(self.arch.nrows):
-            ntiles = wi_per_row
-            if row < (len(vtiles) % self.arch.nrows): ntiles += 1
-            for row_i in range(off, off + ntiles):
-                self.contract1d_place(row, vtiles[row_i])
-            off += ntiles
-
-    def flatmap_place(self, vtiles : list[list[WorkItem]], offset=0, bbox=None, randomize=False):
-        if bbox is None: bbox = (0, self.arch.nrows, 0, self.arch.ncols)
-        if randomize: shuffle(vtiles)
-        if len(bbox) == 2: bbox = (bbox[0], bbox[0] + 1, bbox[1], bbox[1] + 1)
-
-        logger.debug(f'flatmap_place: {len(vtiles)} lists onto {bbox} (Offset = {offset})')
-
-        bbox_nrows = bbox[1] - bbox[0]
-        bbox_ncols = bbox[3] - bbox[2]
-        bbox_ntiles = bbox_nrows * bbox_ncols
-
-        for vtid, vtile in enumerate(vtiles):
-            tid = (vtid + offset) % bbox_ntiles
-            lr, lc = (tid // bbox_ncols), (tid % bbox_ncols)
-            tl = self[bbox[0] + lr, bbox[2] + lc]
-            tl += list(itertools.chain(vtile))
-
-        return len(vtiles)
-
-
-    @property
-    def nsteps(self): return max(map(len, self.flattiles))
-
-    @property
-    def flops(self):
-        return sum(map(lambda x: x.flops, self.workitems))
-
-    def __getitem__(self, idx):
-        r, c = idx
-        return self.tiles[r][c]
-
 placement_funcs = {}
 
 def register_placement_single(mode, archclass, opclass, f):
@@ -217,14 +140,6 @@ def register_placement(mode_s, archclass_s, opclass_s):
         return f
     return decorator
 
-def place_op(mode : str, arch : Arch, op : Operator) -> WorkList:
-    global placement_funcs
-    logger.debug(f'place_op(mode={mode}): {arch} {op}')
-    wl : WorkList = placement_funcs[(mode, type(arch), type(op))](arch, op)
-    if op.flops != wl.flops:
-        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={wl.flops}, wl/op={wl.flops / op.flops}x)')
-    return wl
-
 @dataclass(frozen=True)
 class SimResult:
     nsteps : int
@@ -245,67 +160,155 @@ def simulate(arch : Arch, op : Operator, *args, **kwargs) -> SimResult:
     global sim_funcs
     return sim_funcs[type(arch)](arch, op, *args, **kwargs)
 
-def test_coords(arch : Arch, mask, r, c):
-    return (mask & (1 << (r * arch.ncols + c))) != 0
-
-def _get_dests(arch : Arch, mask):
-    i = 0
-    while mask != 0:
-        if mask & 1:
-            r, c = i // arch.ncols, i % arch.ncols
-            yield r, c
-        mask >>= 1
-        i += 1
-
-@functools.lru_cache
 def get_dests(arch : Arch, mask):
-    return list(_get_dests(arch, mask))
+    def tid_to_rc(tid): return (tid // arch.ncols, tid % arch.ncols)
+    return list(tid_to_rc(tid) for tid in mask.tiles())
 
-def simulate_tiles(arch : Arch, kwstats : dict, l1 : list[list], wl : WorkList, step : int):
-    exec_cyc = []
-    idle_tiles = 0
-    flops = 0
-    dest_map = dict()
-    accesses = 0
-    hits = 0
+class SimBase:
+    def __init__(self, arch):
+        self.arch = arch
 
-    for r in range(arch.nrows):
-        for c in range(arch.ncols):
-            tile = wl[r, c]
-            l1[r][c].reset()
-            if step >= len(tile):
-                idle_tiles += 1
-                continue
-            exec_cyc.append(tile[step].exec_lat)
-            flops += tile[step].flops
-            for l in tile[step].read_trace:
-                if l1[r][c].lookup(l):
-                    l1[r][c].insert(l)
+    def place_work(self, tid, wl : list[WorkItem]): raise NotImplementedError()
+
+    def flatmap_place(self, vtiles : list[list[WorkItem]], offset=0, bbox=None, randomize=False):
+        if bbox is None: bbox = (0, self.arch.nrows, 0, self.arch.ncols)
+        if randomize: shuffle(vtiles)
+        if len(bbox) == 2: bbox = (bbox[0], bbox[0] + 1, bbox[1], bbox[1] + 1)
+
+        bbox_nrows = bbox[1] - bbox[0]
+        bbox_ncols = bbox[3] - bbox[2]
+        bbox_ntiles = bbox_nrows * bbox_ncols
+
+        for vtid, vtile in enumerate(vtiles):
+            ltid = (vtid + offset) % bbox_ntiles
+            lr, lc = (ltid // bbox_ncols), (ltid % bbox_ncols)
+            r, c = bbox[0] + lr, bbox[2] + lc
+            tid = r * self.arch.ncols + c
+            self.place_work(tid, vtile)
+
+        return len(vtiles)
+
+def place_op(mode : str, arch : Arch, op : Operator, sim : SimBase, check_flops=True):
+    global placement_funcs
+    logger.debug(f'place_op(mode={mode}): {arch} {op}')
+    placement_funcs[(mode, type(arch), type(op))](arch, op, sim)
+    if check_flops and op.flops != sim.flops:
+        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+
+class StepCounter(SimBase):
+    def __init__(self, arch : Arch):
+        super().__init__(arch)
+        self.cur_step = [0 for _ in range(arch.ntiles)]
+
+    def place_work(self, tid, wl : list[WorkItem]):
+        self.cur_step[tid] += len(wl)
+
+    @property
+    def nsteps(self): return max(self.cur_step)
+
+class Sim(SimBase):
+    def __init__(self, arch : Arch):
+        super().__init__(arch)
+        self.dest_maps = {}
+        self.exec_cycles = {}
+        self.l1_accesses = 0
+        self.l1_hits = 0
+        self.flops = 0
+        self.cur_step = [0 for _ in range(arch.ntiles)]
+        self.l1 = [
+            [cache.Cache(arch.l1_nset, arch.l1_assoc, arch.lbits) for _ in range(arch.ncols)]
+            for _ in range(arch.nrows)
+        ]
+
+
+    def log_exec_cycles(self, step, tid, ncycles):
+        if step not in self.exec_cycles:
+            self.exec_cycles[step] = np.zeros(self.arch.ntiles, dtype=np.int32)
+        self.exec_cycles[step][tid] += ncycles
+
+    def log_read(self, step, tid, laddr):
+        if step not in self.dest_maps:
+            self.dest_maps[step] = destlist.DestList()
+        self.dest_maps[step].set(laddr, tid)
+
+    def place_work(self, tid, wl : list[WorkItem]):
+        r, c = self.arch.tile_coords(tid)
+        tile_cur_step = self.cur_step[tid]
+        self.cur_step[tid] += len(wl)
+
+        for i, wi in enumerate(wl):
+            self.l1[r][c].reset()
+            step = tile_cur_step + i
+
+            self.log_exec_cycles(step, tid, wi.exec_lat)
+            self.flops += wi.flops
+
+            for l in wi.read_trace:
+                if self.l1[r][c].lookup(l):
+                    self.l1[r][c].insert(l)
                     continue
-                l1[r][c].insert(l)
-                if l not in dest_map: dest_map[l] = 0
-                dest_map[l] |= (1 << (r * arch.ncols + c))
+                self.l1[r][c].insert(l)
+                self.log_read(step, tid, l)
 
-            accesses += l1[r][c].get_accesses()
-            hits += l1[r][c].get_hits()
+            self.l1_accesses += self.l1[r][c].get_accesses()
+            self.l1_hits += self.l1[r][c].get_hits()
 
-    max_exec_cyc = max(exec_cyc)
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f'+ Max exec cycles: {max_exec_cyc}')
-        logger.debug(f'+ Avg exec cycles: {np.average(exec_cyc)}')
-        logger.debug(f'+ Idle tiles: {idle_tiles}')
-        logger.debug(f'+ Step flops: {flops}')
-        logger.debug(f'+ L1 Hit Rate: {hits} / {accesses} = {np.round(hits / max(accesses, 1), 2) * 100}%')
+    @property
+    def nsteps(self): return max(self.cur_step)
 
-        dsts = [len(d) for _, d in dest_map.items()]
-        if len(dsts) > 0:
-            avg_dests_per_line = np.average(dsts)
-            logger.debug(f'+ Avg dests per line: {avg_dests_per_line}')
 
-        logger.debug(f'+ # lines transmitted: {len(dest_map)}')
+if False:
+    def simulate_tiles(arch : Arch, kwstats : dict, l1 : list[list], wl : WorkList, step : int):
+        exec_cyc = []
+        idle_tiles = 0
+        flops = 0
+        dest_map = destlist.DestList()
+        accesses = 0
+        hits = 0
 
-    return max_exec_cyc, dest_map
+        for r in range(arch.nrows):
+            for c in range(arch.ncols):
+                tile = wl[r, c]
+                l1[r][c].reset()
+                if step >= len(tile):
+                    idle_tiles += 1
+                    continue
+                exec_cyc.append(tile[step].exec_lat)
+                flops += tile[step].flops
+                for l in tile[step].read_trace:
+                    if l1[r][c].lookup(l):
+                        l1[r][c].insert(l)
+                        continue
+                    l1[r][c].insert(l)
+                    dest_map.set(l, r * arch.ncols + c)
+
+                accesses += l1[r][c].get_accesses()
+                hits += l1[r][c].get_hits()
+
+        max_exec_cyc = max(exec_cyc)
+
+        if 'max_lines' not in kwstats: kwstats['max_lines'] = 0
+        kwstats['max_lines'] = max(kwstats['max_lines'], len(dest_map))
+
+        if 'tot_lines' not in kwstats: kwstats['tot_lines'] = 0
+        kwstats['tot_lines'] += len(dest_map)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'+ Max exec cycles: {max_exec_cyc}')
+            logger.debug(f'+ Avg exec cycles: {np.average(exec_cyc)}')
+            logger.debug(f'+ Idle tiles: {idle_tiles}')
+            logger.debug(f'+ Step flops: {flops}')
+            logger.debug(f'+ L1 Hit Rate: {hits} / {accesses} = {np.round(hits / max(accesses, 1), 2) * 100}%')
+
+            # dsts = [len(d) for _, d in dest_map.items()]
+            # if len(dsts) > 0:
+            #     avg_dests_per_line = np.average(dsts)
+            #     logger.debug(f'+ Avg dests per line: {avg_dests_per_line}')
+
+            logger.debug(f'+ # lines transmitted: {len(dest_map)}')
+
+        return max_exec_cyc, dest_map
 
 def simulate_noc(arch : Arch, dest_map : dict, addr_llc_coords : Callable):
     raise NotImplementedError()
@@ -316,83 +319,44 @@ def num_steps(
     placement_mode : str = 'naive',
     **kwargs
 ):
-    return place_op(placement_mode, arch, op).nsteps
+    sim = StepCounter(arch)
+    place_op(placement_mode, arch, op, sim, check_flops=False)
+    return sim.nsteps
 
 def common_sim(
     arch : Arch,
     op : Operator,
-    tile_sim_func : Callable = simulate_tiles,
     noc_sim_func : Callable = simulate_noc,
     placement_mode : str = 'naive',
-    l1_capacity : int = 16384,
-    l1_assoc : int = 4,
-    randomize_llc : bool = False,
     counter : multiprocessing.Value = None,
     lock : multiprocessing.Lock = None,
 ):
+    sim = Sim(arch)
+    kwstats = {}
+    place_op(placement_mode, arch, op, sim)
+
+    logger.debug(f'Simulating {sim.nsteps} steps with {sim.flops} flops...')
+    traffic = noc.zero_traffic(arch, sim.nsteps)
     cycles = 0
-    kwstats = dict()
-    lbits = int(np.ceil(np.log2(arch.line_size)))
-
-    if randomize_llc:
-        llc_addr_map = list(range(arch.ntiles))
-        random.shuffle(llc_addr_map)
-    else:
-        llc_addr_map = None
-
-    def tile_coords(tid):
-        assert tid >= 0 and tid < arch.ntiles
-        return (tid // arch.ncols), (tid % arch.ncols)
-
-    def addr_llc_coords(addr : int):
-        line = addr >> lbits
-        tid = line & (arch.ntiles - 1)
-        if llc_addr_map is not None:  return tile_coords(llc_addr_map[tid])
-        else: return tile_coords(tid)
-
-
-    wl = place_op(placement_mode, arch, op)
-    l1_nway = int(l1_assoc)
-    l1_nset = int(l1_capacity / arch.line_size / l1_nway)
-    l1 = [
-        [cache.Cache(l1_nset, l1_nway, lbits) for _ in range(arch.ncols)]
-        for _ in range(arch.nrows)
-    ]
-
     compute_cyc = 0
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f'Simulating {wl.nsteps} steps with {wl.flops} flops...')
 
-    traffic = noc.zero_traffic(arch, wl.nsteps)
-
-    for step in range(wl.nsteps):
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'Step {step + 1}/{wl.nsteps}')
-            logger.debug(f'+ Simulating tiles...')
-
-        max_exec_cyc, dest_map = tile_sim_func(arch, kwstats, l1, wl, step)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'+ Simulating NOC...')
-
-        traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map, addr_llc_coords)
+    for step in range(sim.nsteps):
+        dest_map = sim.dest_maps.get(step, None)
+        max_exec_cyc = max(sim.exec_cycles[step])
+        traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map)
         net_latency = np.max(traffic[step, :, :, :]) / arch.noc_ports_per_dir
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'+ Exec latency: {compute_cyc} cyc')
-            logger.debug(f'+ Noc latency: {net_latency} cyc')
+            logger.debug(f'Step {step + 1}/{sim.nsteps}: Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
 
         cycles += max(compute_cyc, net_latency)
         compute_cyc = max_exec_cyc
 
-        del dest_map
-        gc.collect()
+        if lock is not None and counter is not None:
+            with lock: counter.value += 1
 
-        with lock: counter.value += 1
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f'+ Compute drain latency: {compute_cyc}')
+    logger.debug(f'Compute drain latency: {compute_cyc}')
 
     cycles += compute_cyc
-    return SimResult(wl.nsteps, cycles, traffic, kwstats)
+    return SimResult(sim.nsteps, cycles, traffic, kwstats)

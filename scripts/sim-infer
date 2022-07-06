@@ -10,9 +10,9 @@ for APP in $APPS; do
     for LS in $LS; do
         for PORT in $PORTS; do
             for ARCH in $ARCHS; do
-                python -OO test/app.py -i -a $APP -b online --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                python -OO test/app.py -i -a $APP -b online --line-size=$LS -p6 --noc-ports=$PORT -r $ARCH
                 echo ""
-                python -OO test/app.py -i -a $APP -b offline --line-size=$LS -p8 --noc-ports=$PORT -r $ARCH
+                python -OO test/app.py -i -a $APP -b offline --line-size=$LS -p6 --noc-ports=$PORT -r $ARCH
                 echo ""
             done
         done

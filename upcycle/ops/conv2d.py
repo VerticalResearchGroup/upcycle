@@ -106,9 +106,8 @@ def make_conv2d_tensors(arch : Arch, conv : Conv2D):
     to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
     return ti, tw, to
 
-def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
+def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
-    wl = M.WorkList.from_arch(arch, [ti, tw, to])
 
     kblk = 16
     kgrp = conv.k // kblk
@@ -122,7 +121,7 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
                 row = int(p / pgrp)
                 for q in range(conv.q):
                     col = (int(q / qgrp) + (k // kblk) * (arch.ncols // kgrp))
-                    wl.flatmap_place([
+                    sim.flatmap_place([
                         [
                             Conv2DTile(
                                 arch, conv.dtype,
@@ -135,12 +134,8 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D):
                         ]
                     ], bbox=(row, row + 1, col, col + 1))
 
-    return wl
-
-
-def place_conv_pq_spatial2(arch : Arch, conv : Conv2D):
+def place_conv_pq_spatial2(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
-    wl = M.WorkList.from_arch(arch, [ti, tw, to])
 
     kblk = 16
 
@@ -155,7 +150,7 @@ def place_conv_pq_spatial2(arch : Arch, conv : Conv2D):
             for q in range(conv.q):
                 for k in range(0, conv.k, kblk):
                     col = int((q * conv.k // kblk + k // kblk) / qkgrp)
-                    wl.flatmap_place([
+                    sim.flatmap_place([
                         [
                             Conv2DTile(
                                 arch, conv.dtype,
@@ -167,8 +162,6 @@ def place_conv_pq_spatial2(arch : Arch, conv : Conv2D):
                             for bc in range(0, conv.c, 16)
                         ]
                     ], bbox=(row, col))
-
-    return wl
 
 def blk_k(dtype : Dtype, k : int):
     kblk_in = 16 if dtype == Dtype.I8 else 8
@@ -189,13 +182,10 @@ def blk_k(dtype : Dtype, k : int):
 
     return kblk_col, kblk_row, kblk_in, kblk_left
 
-def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D):
+def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
-    wl = M.WorkList.from_arch(arch, [ti, tw, to])
 
     kblk_col, kblk_row, kblk_in, kblk_out = blk_k(conv.dtype, conv.k)
-
-
     assert kblk_col * kblk_row * kblk_in * kblk_out == conv.k
 
     logger.debug(f'+ kblk_col={kblk_col}, kblk_row={kblk_row}, kblk_in={kblk_in}')
@@ -216,7 +206,7 @@ def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D):
 
                         assert conv.k > ki
 
-                        wl.flatmap_place([[
+                        sim.flatmap_place([[
                             Conv2DTile(
                                 arch, conv.dtype,
                                 conv, ti, tw, to, False, ni,
@@ -229,26 +219,21 @@ def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D):
 
                         ki += kblk_in
 
-    return wl
-
 @M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2D)
-def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
+def place_conv2d_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
-    if npixels > arch.ntiles:
-        kblk = 128
-    elif npixels > arch.ntiles // 4:
-        kblk = 64
-    else:
-        kblk = 8
+
+    if npixels > arch.ntiles: kblk = 128
+    elif npixels > arch.ntiles // 4: kblk = 64
+    else: kblk = 8
 
     qblk = int(max(1, 32 / kblk))
     # nblk = int(max(1, arch.ncols // conv.n))
     off = 0
 
-    wl = M.WorkList.from_arch(arch, [ti, tw, to])
     for ni in range(0, conv.n):
-        off += wl.flatmap_place([
+        off += sim.flatmap_place([
             [
                 Conv2DTile(
                     arch, conv.dtype,
@@ -264,11 +249,9 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D):
             for bk in range(0, conv.k, kblk)
         ], offset=off, bbox=None, randomize=False)
 
-    return wl
-
 @M.register_placement('pg', [OracleArch, BgroupArch], Conv2D)
-def place_conv2d_profiled(arch : Arch, conv : Conv2D):
-    return profiled_placement(arch, conv, place_conv2d_flatmap)
+def place_conv2d_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):
+    return profiled_placement(arch, conv, sim, place_conv2d_flatmap)
 
 @dataclass(frozen=True)
 class Conv2DDiTile(M.WorkItemPerfectCompute):
@@ -367,7 +350,7 @@ class Conv2DDwTile(M.WorkItemPerfectCompute):
         raise NotImplementedError()
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2DBwd)
-def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
+def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     n = conv.n
     h = conv.h
     w = conv.w
@@ -392,9 +375,7 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
     cols_per_didw = arch.ncols // 2
     nblk = 1
 
-    wl = M.WorkList.from_arch(arch, [ti, tw, to, tdi, tdw, tdo])
-
-    off = wl.flatmap_place([
+    off = sim.flatmap_place([
         [
             Conv2DDiTile(
                 arch, conv.dtype,
@@ -411,7 +392,7 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
         for bc in range(0, conv.c, 16)
     ], bbox=None, randomize=False)
 
-    wl.flatmap_place([
+    sim.flatmap_place([
         [
             Conv2DDwTile(
                 arch, conv.dtype,
@@ -432,9 +413,6 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D):
         for bk in range(0, conv.k, 32)
     ], offset=off, randomize=False)
 
-    return wl
-
-
 @M.register_placement('pg', [OracleArch, BgroupArch], Conv2DBwd)
-def place_conv2d_profiled(arch : Arch, conv : Conv2DBwd):
-    return profiled_placement(arch, conv, place_conv2d_bwd_flatmap)
+def place_conv2d_profiled(arch : Arch, conv : Conv2DBwd, sim : M.SimBase):
+    return profiled_placement(arch, conv, sim, place_conv2d_bwd_flatmap)

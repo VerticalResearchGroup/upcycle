@@ -112,7 +112,7 @@ def make_conv3d_tensors(arch : Arch, conv : Conv3D):
     return ti, tw, to
 
 @M.register_placement('flatmap', [OracleArch, BgroupArch], Conv3D)
-def place_conv3d_flatmap(arch : Arch, conv : Conv3D):
+def place_conv3d_flatmap(arch : Arch, conv : Conv3D, sim : M.SimBase):
     ti, tw, to = make_conv3d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
 
@@ -120,32 +120,31 @@ def place_conv3d_flatmap(arch : Arch, conv : Conv3D):
     elif npixels > arch.ntiles // 4: kblk = 64
     else: kblk = 8
 
-    oblk = int(max(1, 32 / kblk))
+    pblk = 4
+    qblk = 4
+    oblk = int(max(1, 128 / kblk))
     # nblk = int(max(1, arch.ncols // conv.n))
     off = 0
 
-    wl = M.WorkList.from_arch(arch, [ti, tw, to])
     for ni in range(0, conv.n):
-        off += wl.flatmap_place([
+        off += sim.flatmap_place([
             [
                 Conv3DTile(
                     arch, conv.dtype,
                     conv, ti, tw, to, False, ni,
-                    Slice.blk(bp, conv.p, 1),
-                    Slice.blk(bq, conv.q, 1),
+                    Slice.blk(bp, conv.p, pblk),
+                    Slice.blk(bq, conv.q, qblk),
                     Slice.blk(bo, conv.o, oblk),
                     Slice.blk(bc, conv.c, 16),
                     Slice.blk(bk, conv.k, kblk))
                 for bc in range(0, conv.c, 16)
             ]
-            for bp in range(0, conv.p, 1)
-            for bq in range(0, conv.q, 1)
+            for bp in range(0, conv.p, pblk)
+            for bq in range(0, conv.q, qblk)
             for bo in range(0, conv.o, oblk)
             for bk in range(0, conv.k, kblk)
         ], offset=off, bbox=None, randomize=False)
 
-    return wl
-
 @M.register_placement('pg', [OracleArch, BgroupArch], Conv3D)
-def place_conv3d_profiled(arch : Arch, conv : Conv3D):
-    return profiled_placement(arch, conv, place_conv3d_flatmap)
+def place_conv3d_profiled(arch : Arch, conv : Conv3D, sim : M.SimBase):
+    return profiled_placement(arch, conv, sim, place_conv3d_flatmap)
