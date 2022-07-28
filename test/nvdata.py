@@ -4,7 +4,7 @@ import pandas as pd
 
 def train_data(name, stats : U.nvdb.NvidiaAppStats):
     peak = U.nvdb.a100_peak[stats.train_dtype]
-    app_flops = U.apps.app_train_flops[name]
+    app_flops = U.apps.mlperf_v1_apps[name].train_flops
 
     large_perf = stats.train_large_perf
     large_eff = np.round(large_perf * app_flops / peak * 100, 2)
@@ -21,7 +21,7 @@ def train_data(name, stats : U.nvdb.NvidiaAppStats):
 
 def infer_data(name, stats : U.nvdb.NvidiaAppStats):
     peak = U.nvdb.a100_peak[stats.infer_dtype]
-    app_flops = U.apps.app_infer_flops[name]
+    app_flops = U.apps.mlperf_v1_apps[name].infer_flops
 
     on_perf = stats.infer_online_perf
     on_eff = np.round(on_perf * app_flops / peak * 100, 2)
@@ -55,10 +55,10 @@ tdata = {
 train_dframe = pd.DataFrame({
     'Name': [d[0] for d in tdata],
     'GOPs': [d[1] for d in tdata],
+    'Small Perf.': [d[4] for d in tdata],
+    'Small Eff. (%)': [d[5] for d in tdata],
     'Large Perf.': [d[2] for d in tdata],
     'Large Eff. (%)': [d[3] for d in tdata],
-    'Small Perf.': [d[4] for d in tdata],
-    'Small Eff. (%)': [d[5] for d in tdata]
 })
 
 print('Inference Data:')

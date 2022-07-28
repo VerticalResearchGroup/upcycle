@@ -3,6 +3,7 @@ from dataclasses import dataclass, fields
 import itertools
 
 from ..common import *
+from ..arch import *
 from .. import model as M
 
 backward_map = {}

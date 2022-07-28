@@ -41,7 +41,6 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     return result
 
 def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
-
     gops = int(op.flops / result.cycles * arch.freq / 1e9)
     eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
     logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
@@ -116,6 +115,50 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
 
     return tt1 - tt0, layers
 
+def get_arch(args):
+    if args.arch == 'oracle':
+        arch = U.OracleArch(
+            2.4e9, 512, 1, 32, 64,
+            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc)
+    elif args.arch == 'bg':
+        [grows, gcols] = list(map(int, args.bgsize.split(',')))
+        arch = U.BgroupArch(
+            2.4e9, 512, 1, 32, 64,
+            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc,
+            grows, gcols)
+
+        return arch
+
+def get_workload(args):
+    app = U.apps.mlperf_v1_apps[args.app]
+
+    if args.infer:
+        if args.batch in {'offline', 'online'}:
+            batch = app.bs.infer_offline if args.batch == 'offline' \
+                else app.bs.infer_online
+        else: batch = int(args.batch)
+
+        if args.dtype == '': dtype = app.infer_dtype
+        else: dtype = U.Dtype.from_str(args.dtype)
+
+        trace = app.infer_factory(dtype, n=batch)
+        if args.layer is not None: app = U.apps.Trace([trace.oplist[args.layer]])
+        trace.infer()
+
+    else:
+        if args.batch in {'large', 'small'}:
+            batch = app.bs.train_large if args.batch == 'large' \
+                else app.bs.train_small
+        else: batch = int(args.batch)
+
+        if args.dtype == '': dtype = app.train_dtype
+        else: dtype = U.Dtype.from_str(args.dtype)
+
+        trace = app.train_factory(dtype, n=batch)
+        if args.layer is not None: app = U.apps.Trace([trace.oplist[args.layer]])
+        trace.train(args.bwd_only)
+
+    return app, trace, batch, dtype
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
@@ -132,11 +175,12 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('-l', '--layer', type=int, default=None)
 
+    # Microarch Params
     parser.add_argument('--noc-ports', type=int, default=1)
     parser.add_argument('--l1-capacity', type=int, default=64*1024)
     parser.add_argument('--l1-assoc', type=int, default=16)
-    parser.add_argument('--line-size', type=int, default=64)
-    parser.add_argument('--bgsize', type=str, default='4,8')
+    parser.add_argument('--line-size', type=int, default=32)
+    parser.add_argument('--group', type=str, default='4,8')
 
     args = parser.parse_args()
     assert not (args.train and args.infer)
@@ -146,60 +190,25 @@ if __name__ == '__main__':
         assert args.parallel == 1, f'Cannot debug in parallel'
         logger.setLevel(logging.DEBUG)
 
-    if args.arch == 'oracle':
-        arch = U.OracleArch(
-            2.4e9, 512, 1, 32, 64,
-            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc)
-    elif args.arch == 'bg':
-        [grows, gcols] = list(map(int, args.bgsize.split(',')))
-        arch = U.BgroupArch(
-            2.4e9, 512, 1, 32, 64,
-            args.noc_ports, args.line_size, args.l1_capacity, args.l1_assoc,
-            grows, gcols)
-
-
-    if args.infer:
-        if args.batch in {'offline', 'online'}:
-            batch = U.apps.infer_batch_sizes[args.batch][args.app]
-        else: batch = int(args.batch)
-
-        if args.dtype == '':
-            dtype = U.apps.infer_dtype[args.app]
-        else: dtype = U.Dtype.from_str(args.dtype)
-
-        app = U.apps.infer_apps_by_name[args.app](dtype, n=batch)
-        if args.layer is not None: app = U.apps.Trace([app.oplist[args.layer]])
-        app.infer()
-
-    else:
-        if args.batch in {'large', 'small'}:
-            batch = U.apps.train_batch_sizes[args.batch][args.app]
-        else: batch = int(args.batch)
-
-        if args.dtype == '':
-            dtype = U.apps.train_dtype[args.app]
-        else: dtype = U.Dtype.from_str(args.dtype)
-
-        app = U.apps.train_apps_by_name[args.app](dtype, n=batch)
-        if args.layer is not None: app = U.apps.Trace([app.oplist[args.layer]])
-        app.train(args.bwd_only)
+    arch = get_arch(args)
+    app, trace, batch, dtype = get_workload(args)
 
     logging.info(f'App: {args.app} ({"train" if args.train else "infer"})')
     logging.info(f'Dtype: {dtype}, Batch Size: {batch}')
-    logging.info(f'App Ops: {app.flops / 1e9} G')
+    logging.info(f'App Ops: {trace.flops / 1e9} G')
     logging.info(f'Arch: {arch}')
 
     sim_args = dict(placement_mode=args.placement_mode)
 
-    if args.parallel > 1: time_ns, layers = simulate_app_par(args.parallel, arch, dtype, app, sim_args, args.verbose)
-    else: time_ns, layers = simulate_app(arch, dtype, app, sim_args, args.verbose)
+    if args.parallel > 1: time_ns, layers = simulate_app_par(args.parallel, arch, dtype, trace, sim_args, args.verbose)
+    else: time_ns, layers = simulate_app(arch, dtype, trace, sim_args, args.verbose)
 
     cycles = sum(result.cycles for result in layers)
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')
     logging.debug(f'+ Total Latency: {cycles} cyc')
-    logging.info(f'+ Throughput: {green}{arch.freq / cycles * batch} samp/sec{reset}, {blue}{app.flops / cycles / arch.ntiles / arch.peak_opc(dtype) * 100} %{reset}')
-    logging.debug(f'+ Compute: {app.flops / cycles} flops/cyc')
-    logging.debug(f'+ Compute: {app.flops / cycles / arch.ntiles} flops/cyc/core')
+    logging.info(f'+ Throughput: {green}{arch.freq / cycles * batch} samp/sec{reset}, {blue}{trace.flops / cycles / arch.ntiles / arch.peak_opc(dtype) * 100} %{reset}')
+    logging.debug(f'+ Compute: {trace.flops / cycles} flops/cyc')
+    logging.debug(f'+ Compute: {trace.flops / cycles / arch.ntiles} flops/cyc/core')
 
     if args.verbose:
         max_lines = max(result.kwstats.get('max_lines', -1) for result in layers)

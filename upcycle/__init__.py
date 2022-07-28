@@ -1,4 +1,5 @@
 from .common import *
+from .arch import *
 from . import ops
 from . import profiles
 from . import apps

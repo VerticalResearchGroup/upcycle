@@ -1,0 +1,3 @@
+#!/bin/bash
+
+python test/app.py -i -a resnet50 -b 1

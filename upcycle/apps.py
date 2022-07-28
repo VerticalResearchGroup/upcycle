@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Callable
 
 from .common import *
 from . import ops
@@ -67,11 +68,8 @@ class Trace:
 def testmatmul(dtype, n=1):
     return Trace([ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
 
-def testconv_fwd(dtype, n=1):
+def testconv(dtype, n=1):
     return Trace([ ops.Conv2D(dtype, True, n, 224, 224, 3, 112, 112, 64, 7, 7, 2, 3, False) ])
-
-def testconv_bwd(dtype, n=1):
-    return Trace([ ops.Conv2DBwd(dtype, True, n, 224, 224, 3, 112, 112, 64, 7, 7, 2, 3, False) ])
 
 # MLPerf Apps based on v2.0 Inference and v1.1 Training datacenter benchmarks:
 # https://mlcommons.org/en/inference-datacenter-20/
@@ -301,7 +299,7 @@ def unet3d(dtype, n=1):
         ops.Conv3D(dtype, True, n, 128, 128, 128, 32, 128, 128, 128, 3, 1, 1, 1, 1, 0, False),
     ])
 
-def rnnt_infer(dtype, n, il=200, ol=200):
+def rnnt_infer(dtype, n, il=239, ol=120):
     return Trace(([
         # Encoder
         ops.Lstm(dtype, False, n, 1, 240, 1024, False, False),
@@ -382,108 +380,123 @@ def dlrm(dtype, n, tok_per_samp_frac=0.2):
         ops.Linear(dtype, True, 1, n, 1, 256, False, False),
     ])
 
-app_infer_flops = {
-    'testmatmul': testmatmul(Dtype.I8, 1).flops,
-    'bert-large-squad-avg': bertlarge(Dtype.I8, 1, 178).flops,
-    'resnet50': resnet50(Dtype.I8, 1).flops,
-    'unet': unet3d(Dtype.I8, 1).flops,
-    'ssdrn34-1200': ssdrn34_1200(Dtype.I8, 1).flops,
-    'rnnt': rnnt_infer(Dtype.I8, 1).flops,
-    'dlrm': dlrm(Dtype.I8, 1).flops,
+@dataclass
+class BatchSizes:
+    infer_online : int
+    infer_offline : int
+    train_small : int
+    train_large : int
+
+@dataclass
+class App:
+    infer_factory : Callable[[], Trace]
+    infer_dtype : Dtype
+    train_factory : Callable[[], Trace]
+    train_dtype : Dtype
+    bs : BatchSizes
+
+    @property
+    def infer_flops(self):
+        return self.infer_factory(self.infer_dtype, n=1).infer().flops
+
+    @property
+    def train_flops(self):
+        return self.train_factory(self.train_dtype, n=1).train().flops
+
+mlperf_v1_apps = {
+    'testmm': App(
+        testmatmul, Dtype.I8,
+        testmatmul, Dtype.FP16,
+        BatchSizes(1, 8, 1, 8)),
+    'testconv': App(
+        testconv, Dtype.I8,
+        testconv, Dtype.FP16,
+        BatchSizes(1, 8, 1, 8)),
+    'resnet50': App(
+        resnet50, Dtype.I8,
+        resnet50, Dtype.FP16,
+        BatchSizes(1, 8, 1, 4)),
+    'ssdrn34-300': App(
+        None, None,
+        ssdrn34_300, Dtype.FP16,
+        BatchSizes(1, 4, None, None)),
+    'ssdrn34-1200': App(
+        ssdrn34_1200, Dtype.I8,
+        None, None,
+        BatchSizes(None, None, 1, 4)),
+    'bert-large-squad': App(
+        # N.B. 178 reflects the average tokens per query from the SQuAD dataset.
+        lambda dtype, n: bertlarge(dtype, n, 178), Dtype.I8,
+        None, None,
+        BatchSizes(1, 8, None, None)),
+    'bert-large-pretrain': App(
+        None, None,
+        # N.B. The official MLPerf code was run with bert pretraining for a full
+        # epoch and we recorded among 156689001 total samples observed for
+        # training, there was 39867330529 total tokens -- an average of 254
+        # tokens per sample.
+        lambda dtype, n: bertlarge(dtype, n, 254), Dtype.FP16,
+        BatchSizes(None, None, 1, 8)),
+    'unet': App(
+        unet3d, Dtype.I8,
+        unet3d, Dtype.FP16,
+        BatchSizes(1, 8, 1, 8)),
+    'rnnt': App(
+        # N.B. The official MLPerf inference benchmark uses librespeech dataset
+        # which has an average input length of 239, output length of 120.
+        lambda dtype, n: rnnt_infer(dtype, n, il=239, ol=120), Dtype.FP16,
+        rnnt_train, Dtype.FP16,
+        BatchSizes(1, 512, 1, 512)),
+    'dlrm': App(
+        dlrm, Dtype.I8,
+        dlrm, Dtype.FP16,
+        BatchSizes(1, 8, 1, 8)),
 }
 
-infer_apps_by_name = {
-    'testconv': testconv_fwd,
-    'testmatmul': testmatmul,
-    'unet': unet3d,
-    'bert-large-squad-384': bertlarge384,
-    'bert-large-squad-avg': bertlarge_squadavg,
-    'bert-base-squad-384': bertbase384,
-    'resnet50': resnet50,
-    'ssdrn34-1200': ssdrn34_1200,
-    'rnnt': rnnt_infer,
-    'dlrm': dlrm
-}
+def workload_cli_params(parser):
+    parser.add_argument('-d', '--dtype', type=str, default='')
+    parser.add_argument('-t', '--train', action='store_true')
+    parser.add_argument('-T', '--bwd-only', action='store_true')
+    parser.add_argument('-i', '--infer', action='store_true')
+    parser.add_argument('-a', '--app', type=str, default='resnet50')
+    parser.add_argument('-b', '--batch', type=str, default='1')
+    parser.add_argument('-m', '--placement-mode', type=str, default='pg')
+    parser.add_argument('-l', '--layer', type=int, default=None)
 
-infer_batch_sizes = {
-    'online': {
-        'testconv': 1,
-        'testmatmul': 1,
-        'unet': 1,
-        'bert-large-squad-avg': 1,
-        'resnet50': 1,
-        'ssdrn34-1200': 1,
-        'rnnt': 1,
-        'dlrm': 1,
-    },
-    'offline': {
-        'testconv': 8,
-        'testmatmul': 8,
-        'unet': 8,
-        'bert-large-squad-avg': 8,
-        'resnet50': 8,
-        'ssdrn34-1200': 4,
-        'rnnt': 512,
-        'dlrm': 1,
-    },
-}
+def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=False):
+    app = mlperf_v1_apps[app]
 
-infer_dtype = {
-    'testconv': Dtype.I8,
-    'testmatmul': Dtype.I8,
-    'unet': Dtype.I8,
-    'bert-large-squad-avg': Dtype.I8,
-    'resnet50': Dtype.I8,
-    'ssdrn34-1200': Dtype.I8,
-    'rnnt': Dtype.FP16,
-    'dlrm': Dtype.I8,
-}
+    if infer:
+        if scenario_or_batch in {'online', 'offline'}:
+            batch = {
+                'online': app.bs.infer_online,
+                'offline': app.bs.infer_offline,
+            }[scenario_or_batch]
+        else: batch = int(scenario_or_batch)
 
-app_train_flops = {
-    'bert-large-512': bertlarge(Dtype.FP16, 1, 512).train().flops,
-    'resnet50': resnet50(Dtype.FP16, 1).train().flops,
-    'ssdrn34-300': ssdrn34_300(Dtype.FP16, 1).train().flops,
-    'rnnt': rnnt_train(Dtype.FP16, 1).train().flops,
-    'unet': unet3d(Dtype.FP16, 1).train().flops,
-    'dlrm': dlrm(Dtype.FP16, 1).train().flops,
-}
+        dtype = app.infer_dtype
+        trace = app.infer_factory(dtype, n=batch)
 
-train_apps_by_name = {
-    'testconv': testconv_bwd,
-    'unet': unet3d,
-    'bert-large-512': bertlarge,
-    'resnet50': resnet50,
-    'ssdrn34-300': ssdrn34_300,
-    'rnnt': rnnt_train,
-    'dlrm': dlrm
-}
+        if layer is not None: app = Trace([trace.oplist[layer]])
+        trace.infer()
 
-train_batch_sizes = {
-    'small': {
-        'testconv': 1,
-        'unet': 1,
-        'bert-large-512': 1,
-        'resnet50': 1,
-        'ssdrn34-1200': 1,
-        'rnnt': 1,
-        'dlrm': 1,
-    },
-    'large': {
-        'testconv': 8,
-        'unet': 8,
-        'bert-large-512': 8,
-        'resnet50': 4,
-        'ssdrn34-1200': 4,
-        'rnnt': 512,
-        'dlrm': 1,
-    },
-}
+    else:
+        if scenario_or_batch in {'small', 'large'}:
+            batch = {
+                'small': app.bs.train_small,
+                'large': app.bs.train_large,
+            }[scenario_or_batch]
+        else: batch = int(scenario_or_batch)
 
-train_dtype = {
-    'testconv': Dtype.FP16,
-    'bert-large-512': Dtype.FP16,
-    'resnet50': Dtype.FP16,
-    'ssdrn34-1200': Dtype.FP16,
-    'rnnt': Dtype.FP16,
-    'dlrm': Dtype.FP16,
-}
+        dtype = app.train_dtype
+        trace = app.train_factory(dtype, n=batch)
+
+        if layer is not None: app = Trace([trace.oplist[layer]])
+        trace.train(bwd_only)
+
+    return app, trace, batch, dtype
+
+def workload_from_cli(args):
+    assert not (args.train and args.infer)
+    assert args.train or args.infer
+    return workload_factory(args.app, args.batch, args.infer, args.layer, args.bwd_only)

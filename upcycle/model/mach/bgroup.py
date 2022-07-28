@@ -4,11 +4,10 @@ import numpy as np
 import logging
 import time
 
-from ..common import *
+from ...common import *
 
-from .common import *
-from . import cache
-from . import noc
+from ..common import *
+from .. import noc
 
 
 logger = logging.getLogger(__name__)

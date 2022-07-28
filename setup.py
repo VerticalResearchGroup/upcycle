@@ -1,8 +1,16 @@
 import sys
+import glob
 
 from pybind11 import get_cmake_dir
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
+
+# class CustomPybindExtension(Pybind11Extension):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+
+
 
 
 setup(
@@ -17,8 +25,11 @@ setup(
     long_description=open('README.md').read(),
     install_requires=[],
     ext_modules=[
-        Pybind11Extension('upcycle.model.cache', ['upcycle/model/cache.cc']),
-        Pybind11Extension('upcycle.model.destlist', ['upcycle/model/destlist.cc']),
+        Pybind11Extension(
+            'upcycle.model.c_model',
+            glob.glob("upcycle/model/*.cc"),
+            depends=glob.glob("upcycle/model/*.hh"),
+            undef_macros=[]),
     ],
     zip_safe=False,
     python_requires=">=3.6",

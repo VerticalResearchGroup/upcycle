@@ -27,6 +27,9 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--app', type=str, default='resnet50')
     parser.add_argument('-b', '--batch', type=str, default='1')
 
+    parser.add_argument('-D', '--dev-type', type=str, default='cuda')
+    parser.add_argument('-I', '--dev-id', type=int, default=0)
+
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('-l', '--layer', type=int, default=None)
@@ -71,7 +74,7 @@ if __name__ == '__main__':
     logging.info(f'App Ops: {app.flops / 1e9} G')
 
     a100_peak = U.nvdb.a100_peak[dtype]
-    times = U.torchrun.run_with_torch(app, device_type='cuda', niters=100)
+    times = U.torchrun.run_with_torch(app, device_type=args.dev_type, device_id=args.dev_id, niters=100)
 
     logger.info(f'{blue}Times: {times} {reset}')
     total_time = np.sum(times)

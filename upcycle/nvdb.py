@@ -27,7 +27,7 @@ a100_perf = {
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/bert-99/Offline/performance/run_1/mlperf_log_summary.txt
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/bert-99/SingleStream/performance/run_1/mlperf_log_summary.txt
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/configs/bert/Offline/__init__.py
-    'bert-large-squad-avg': NvidiaAppStats(
+    'bert-large-squad': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=681.21,
         infer_offline_perf=3206.7, infer_offline_bs=1024,
@@ -36,7 +36,7 @@ a100_perf = {
         train_small_perf=None, train_small_bs=None),
 
     # NOTE: Training Only
-    'bert-large-512': NvidiaAppStats(
+    'bert-large-pretrain': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=None,
         infer_offline_perf=None, infer_offline_bs=None,
