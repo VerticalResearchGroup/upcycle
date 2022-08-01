@@ -97,7 +97,7 @@ def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None
         for li in range(mm.l)
     ], offset=offset, bbox=bbox)
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch], [Matmul, Linear])
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], [Matmul, Linear])
 def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -111,11 +111,11 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     flatmap_matmul(arch, mm, sim, a, b, c)
 
 
-@M.register_placement('pg', [OracleArch, BgroupArch], [Matmul, Linear])
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], [Matmul, Linear])
 def place_matmul_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
     return profiled_placement(arch, mm, sim, place_matmul_flatmap)
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch], [MatmulBwd, LinearBwd])
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], [MatmulBwd, LinearBwd])
 def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -132,6 +132,6 @@ def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     off = flatmap_matmul(arch, mm.da, sim, dc, b, da)
     flatmap_matmul(arch, mm.db, sim, a, dc, db, offset=off)
 
-@M.register_placement('pg', [OracleArch, BgroupArch], [MatmulBwd, LinearBwd])
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], [MatmulBwd, LinearBwd])
 def place_matmul_bwd_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
     return profiled_placement(arch, mm, sim, place_matmul_bwd_flatmap)

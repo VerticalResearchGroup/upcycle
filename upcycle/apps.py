@@ -419,11 +419,11 @@ mlperf_v1_apps = {
     'ssdrn34-300': App(
         None, None,
         ssdrn34_300, Dtype.FP16,
-        BatchSizes(1, 4, None, None)),
+        BatchSizes(None, None, 1, 4)),
     'ssdrn34-1200': App(
         ssdrn34_1200, Dtype.I8,
         None, None,
-        BatchSizes(None, None, 1, 4)),
+        BatchSizes(1, 4, None, None)),
     'bert-large-squad': App(
         # N.B. 178 reflects the average tokens per query from the SQuAD dataset.
         lambda dtype, n: bertlarge(dtype, n, 178), Dtype.I8,
@@ -477,7 +477,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         dtype = app.infer_dtype
         trace = app.infer_factory(dtype, n=batch)
 
-        if layer is not None: app = Trace([trace.oplist[layer]])
+        if layer is not None: trace = Trace([trace.oplist[layer]])
         trace.infer()
 
     else:
@@ -491,7 +491,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         dtype = app.train_dtype
         trace = app.train_factory(dtype, n=batch)
 
-        if layer is not None: app = Trace([trace.oplist[layer]])
+        if layer is not None: trace = Trace([trace.oplist[layer]])
         trace.train(bwd_only)
 
     return app, trace, batch, dtype

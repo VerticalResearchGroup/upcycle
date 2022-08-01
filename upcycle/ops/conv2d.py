@@ -27,6 +27,9 @@ class Conv2D(Operator):
     def flops(self):
         return self.n * self.p * self.q * self.k * self.r * self.s * self.c * 2
 
+    def __repr__(self):
+        return f'Conv2D(n={self.n}, i={self.h}x{self.w}x{self.c} w={self.r}x{self.s}x{self.k}x{self.c} o={self.p}x{self.q}x{self.k} by {self.stride})'
+
 @operator
 @dataclass(frozen=True)
 @register_backward(Conv2D)
@@ -219,7 +222,7 @@ def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D, sim : M.SimBase):
 
                         ki += kblk_in
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2D)
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], Conv2D)
 def place_conv2d_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
@@ -249,7 +252,7 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
             for bk in range(0, conv.k, kblk)
         ], offset=off, bbox=None, randomize=False)
 
-@M.register_placement('pg', [OracleArch, BgroupArch], Conv2D)
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv2D)
 def place_conv2d_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv2d_flatmap)
 
@@ -349,7 +352,7 @@ class Conv2DDwTile(M.WorkItemPerfectCompute):
         if not self.write: return
         raise NotImplementedError()
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv2DBwd)
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], Conv2DBwd)
 def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     n = conv.n
     h = conv.h
@@ -413,6 +416,6 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
         for bk in range(0, conv.k, 32)
     ], offset=off, randomize=False)
 
-@M.register_placement('pg', [OracleArch, BgroupArch], Conv2DBwd)
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv2DBwd)
 def place_conv2d_profiled(arch : Arch, conv : Conv2DBwd, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv2d_bwd_flatmap)

@@ -164,6 +164,9 @@ def simulate(arch : Arch, op : Operator, *args, **kwargs) -> SimResult:
     global sim_funcs
     return sim_funcs[type(arch)](arch, op, *args, **kwargs)
 
+def get_dest_tids(arch : Arch, mask):
+    return list(tid for tid in mask.tiles())
+
 def get_dests(arch : Arch, mask):
     def tid_to_rc(tid): return (tid // arch.ncols, tid % arch.ncols)
     return list(tid_to_rc(tid) for tid in mask.tiles())
@@ -215,6 +218,7 @@ class Sim(SimBase):
         super().__init__(arch)
         self.dest_maps = {}
         self.exec_cycles = {}
+        self.rss = [[] for _ in range(arch.ntiles)]
         self.l1_accesses = 0
         self.l1_hits = 0
         self.flops = 0
@@ -267,9 +271,9 @@ class Sim(SimBase):
                     self.l1[r][c].insert(l)
                     self.log_read(step, tid, l)
 
+            self.rss[tid].append(self.l1[r][c].get_accesses() * self.arch.line_size)
             self.l1_accesses += self.l1[r][c].get_accesses()
             self.l1_hits += self.l1[r][c].get_hits()
-
 
     @property
     def nsteps(self): return max(self.cur_step)
@@ -305,6 +309,7 @@ def common_sim(
     cycles = 0
     compute_cyc = 0
 
+    kwstats['rss'] = []
 
     for step in range(sim.nsteps):
         dest_map = sim.dest_maps.get(step, None)
@@ -317,6 +322,14 @@ def common_sim(
 
         cycles += max(compute_cyc, net_latency)
         compute_cyc = max_exec_cyc
+
+        tiles_rss = np.array([rss[step] for rss in sim.rss if len(rss) > step])
+        avg_rss = np.mean(tiles_rss, axis=0)
+        max_rss = np.max(tiles_rss, axis=0)
+        kwstats['rss'].append((avg_rss, max_rss))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'+ Max RSS = {max_rss}, Avg RSS = {avg_rss}')
 
         if lock is not None and counter is not None:
             with lock: counter.value += 1

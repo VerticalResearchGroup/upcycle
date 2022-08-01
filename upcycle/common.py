@@ -1,11 +1,19 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
+import functools
 import numpy as np
 import random
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Adapted from https://stackoverflow.com/questions/2536307/decorators-in-the-python-standard-lib-deprecated-specifically
+def deprecated(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.warning(f'Call to deprecated function {func.__name__} (in {func.__module__}).')
+        return func(*args, **kwargs)
+    return wrapper
 
 @dataclass(frozen=True, order=True)
 class Slice:

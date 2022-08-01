@@ -6,6 +6,8 @@ from ..common import *
 from ..arch import *
 from .. import model as M
 
+logger = logging.getLogger(__name__)
+
 backward_map = {}
 
 def register_backward(for_class):

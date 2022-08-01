@@ -111,7 +111,7 @@ def make_conv3d_tensors(arch : Arch, conv : Conv3D):
     to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.o, conv.k))
     return ti, tw, to
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch], Conv3D)
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], Conv3D)
 def place_conv3d_flatmap(arch : Arch, conv : Conv3D, sim : M.SimBase):
     ti, tw, to = make_conv3d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
@@ -145,6 +145,6 @@ def place_conv3d_flatmap(arch : Arch, conv : Conv3D, sim : M.SimBase):
             for bk in range(0, conv.k, kblk)
         ], offset=off, bbox=None, randomize=False)
 
-@M.register_placement('pg', [OracleArch, BgroupArch], Conv3D)
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv3D)
 def place_conv3d_profiled(arch : Arch, conv : Conv3D, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv3d_flatmap)

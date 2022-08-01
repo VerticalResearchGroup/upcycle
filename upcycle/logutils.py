@@ -15,7 +15,7 @@ COLOR_SEQ = "\033[1;%dm"
 BOLD_SEQ = "\033[1m"
 
 class CustomFormatter(logging.Formatter):
-    format = "[%(levelname)s:%(name)s][@%(asctime)s] {msg_fmt_start}%(message)s{msg_fmt_end}"
+    format = "[%(levelname)s:%(name)s] {msg_fmt_start}%(message)s{msg_fmt_end}"
 
     FORMATS = {
         logging.DEBUG: CGREY + format + RESET_SEQ,
