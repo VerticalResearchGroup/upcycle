@@ -52,6 +52,11 @@ class Slice:
     @property
     def indices(self): yield from range(self.start, self.stop, self.step)
 
+    def subslice(self, chunksize):
+        assert self.step == 1
+        for i in range(self.start, self.stop, chunksize):
+            yield Slice(i, min(self.stop, i + chunksize), 1)
+
     @property
     def blocks(self):
         for i in range(self.start, self.stop, self.step):
@@ -62,6 +67,8 @@ def blkdiv(n, b):
     for i in range(b):
         r = nn + (1 if i < n % b else 0)
         yield r
+
+def cld(n : int, d : int): return (n // d) + (1 if n % d > 0 else 0)
 
 class Dtype(IntEnum):
     I8 = 1

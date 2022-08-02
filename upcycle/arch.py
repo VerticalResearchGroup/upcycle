@@ -27,10 +27,15 @@ class Arch:
     nrows : int
     ncols : int
     mapping : TileMapping = TileMapping.AFFINE
+    perfect_compute : bool = False
     noc_ports_per_dir : int = 1
     line_size : int = 64
     l1_capacity : int = 16384
     l1_assoc : int = 16
+    l1_rports : int = 2
+
+    @property
+    def vbytes(self): return self.vbits // 8
 
     @property
     def l1_nset(self):
@@ -92,6 +97,7 @@ def arch_cli_params(parser):
     parser.add_argument('--group', type=str, default='4,8')
     parser.add_argument('--max-dests', type=int, default=8)
     parser.add_argument('--mapping', type=str, default='affine')
+    parser.add_argument('-x', '--perfect-compute', action='store_true')
 
 def arch_factory(arch_name, freq=2.4e9, vbits=512, macs=1, nrows=32, ncols=64, **kwargs):
     mapping = TileMapping.AFFINE
@@ -100,17 +106,17 @@ def arch_factory(arch_name, freq=2.4e9, vbits=512, macs=1, nrows=32, ncols=64, *
 
     if arch_name == 'oracle':
         arch = OracleArch(
-            freq, vbits, macs, nrows, ncols, mapping,
+            freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
             kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'])
     elif arch_name == 'bg':
         [grows, gcols] = list(map(int, kwargs['group'].split(',')))
         arch = BgroupArch(
-            freq, vbits, macs, nrows, ncols, mapping,
+            freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
             kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'],
             grows, gcols)
     elif arch_name == 'fbc':
         arch = FbcastArch(
-            freq, vbits, macs, nrows, ncols, mapping,
+            freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
             kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'],
             kwargs['max_dests'])
 

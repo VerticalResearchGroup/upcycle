@@ -39,17 +39,21 @@ class LstmBwd(Lstm):
         return LstmBwd(l.dtype, False, l.n, l.s, l.d, l.h, l.tr_xh, l.tr_wu)
 
 @dataclass(frozen=True)
-class LstmMatmul(M.WorkItemPerfectCompute):
-    lstm : Lstm
-    xh : M.Tensor
-    wu : M.Tensor
-    o : M.Tensor
+class LstmMatmul(M.WorkItem):
     write : bool
-
     si : int
     ns : Slice # M = Batch
     hs : Slice # N = 4H
     hds : Slice # K = H or D
+
+    @property
+    def xh(self): return self.inputs[0]
+
+    @property
+    def wu(self): return self.inputs[1]
+
+    @property
+    def o(self): return self.outputs[0]
 
     @property
     def flops(self):
@@ -57,10 +61,10 @@ class LstmMatmul(M.WorkItemPerfectCompute):
 
     @property
     def read_trace(self):
-        if not self.lstm.tr_xh: yield from self.xh[self.si, self.ns, :]
+        if not self.op.tr_xh: yield from self.xh[self.si, self.ns, :]
         else: yield from self.xh[self.si, :, self.ns]
 
-        if self.lstm.tr_wu: yield from self.wu[self.si, self.hs, :]
+        if self.op.tr_wu: yield from self.wu[self.si, self.hs, :]
         else: yield from self.wu[self.si, :, self.hs]
 
     @property
@@ -69,31 +73,37 @@ class LstmMatmul(M.WorkItemPerfectCompute):
         yield from self.o[self.si, self.ns, self.hs]
 
 @dataclass(frozen=True)
-class LstmBackend(M.WorkItemPerfectCompute):
-    lstm : Lstm
-    txp : M.Tensor # S, N, 4H
-    thp : M.Tensor # S, N, 4H
-    tc : M.Tensor # S, N, H or S, H, N
-    th : M.Tensor # S, N, H or S, H, N
+class LstmBackend(M.WorkItem):
     write : bool
-
     si : int
     ns : Slice
     hs : Slice
+
+    @property
+    def txp(self): return self.inputs[0]
+
+    @property
+    def thp(self): return self.inputs[1]
+
+    @property
+    def tc(self): return self.outputs[0]
+
+    @property
+    def th(self): return self.outputs[1]
 
     @property
     def flops(self): return 0
 
     @property
     def read_trace(self):
-        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 0]
-        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 0]
-        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 1]
-        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 1]
-        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 2]
-        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 2]
-        yield from self.txp[self.si, self.ns, self.hs + self.lstm.h * 3]
-        yield from self.thp[self.si, self.ns, self.hs + self.lstm.h * 3]
+        yield from self.txp[self.si, self.ns, self.hs + self.op.h * 0]
+        yield from self.thp[self.si, self.ns, self.hs + self.op.h * 0]
+        yield from self.txp[self.si, self.ns, self.hs + self.op.h * 1]
+        yield from self.thp[self.si, self.ns, self.hs + self.op.h * 1]
+        yield from self.txp[self.si, self.ns, self.hs + self.op.h * 2]
+        yield from self.thp[self.si, self.ns, self.hs + self.op.h * 2]
+        yield from self.txp[self.si, self.ns, self.hs + self.op.h * 3]
+        yield from self.thp[self.si, self.ns, self.hs + self.op.h * 3]
 
     @property
     def write_trace(self): raise NotImplementedError()
@@ -102,8 +112,8 @@ def flatmap_lstm_mm(arch : Arch, lstm : Lstm, sim : M.SimBase, txh, twu, to, si,
     return sim.flatmap_place([
         [
             LstmMatmul(
-                arch, lstm.dtype,
-                lstm, txh, twu, to, False, si,
+                arch, lstm, [txh, twu], [to], False,
+                si,
                 Slice.blk(bm, lstm.n, 16),
                 Slice.blk(bn, 4 * lstm.h, 8),
                 Slice.blk(bk, hd, 64))
@@ -117,8 +127,8 @@ def flatmap_lstm_backend(arch : Arch, lstm : Lstm, sim : M.SimBase, txp, thp, tc
     return sim.flatmap_place([
         [
             LstmBackend(
-                arch, lstm.dtype,
-                lstm, txp, thp, tc, th, False, si,
+                arch, lstm, [txp, thp], [tc, th], False,
+                si,
                 Slice.blk(bn, lstm.n, 1),
                 Slice.blk(bh, lstm.h, 32))
         ]

@@ -57,11 +57,7 @@ class Conv3DBwd(Conv3D):
         return Conv3DBwd(c.dtype, False, c.n, c.h, c.w, c.d, c.c, c.p, c.q, c.o, c.k, c.r, c.s, c.t, c.stride, c.pad, c.tr_w)
 
 @dataclass(frozen=True)
-class Conv3DTile(M.WorkItemPerfectCompute):
-    conv : Conv3D
-    i : M.Tensor
-    w : M.Tensor
-    o : M.Tensor
+class Conv3DTile(M.WorkItem):
     write : bool
     ni : int
     ps : Slice
@@ -70,6 +66,14 @@ class Conv3DTile(M.WorkItemPerfectCompute):
     cs : Slice
     ks : slice
 
+    @property
+    def i(self): return self.inputs[0]
+
+    @property
+    def w(self): return self.inputs[1]
+
+    @property
+    def o(self): return self.outputs[0]
 
     @property
     def flops(self):
@@ -79,14 +83,14 @@ class Conv3DTile(M.WorkItemPerfectCompute):
             len(self.os) * \
             len(self.ks) * \
             len(self.cs) * \
-            self.conv.r * self.conv.s * self.conv.t * 2
+            self.op.r * self.op.s * self.op.t * 2
 
     @property
     def read_trace(self):
-        st = self.conv.stride
+        st = self.op.stride
         yield from self.i[self.ni, self.ps * st, self.qs * st, self.os * st, self.cs]
 
-        if not self.conv.tr_w: yield from self.w[:, :, :, self.ks, self.cs]
+        if not self.op.tr_w: yield from self.w[:, :, :, self.ks, self.cs]
         else: yield from self.w[:, :, :, self.cs, self.ks]
 
     @property
@@ -130,8 +134,8 @@ def place_conv3d_flatmap(arch : Arch, conv : Conv3D, sim : M.SimBase):
         off += sim.flatmap_place([
             [
                 Conv3DTile(
-                    arch, conv.dtype,
-                    conv, ti, tw, to, False, ni,
+                    arch, conv, [ti, tw], [to], False,
+                    ni,
                     Slice.blk(bp, conv.p, pblk),
                     Slice.blk(bq, conv.q, qblk),
                     Slice.blk(bo, conv.o, oblk),

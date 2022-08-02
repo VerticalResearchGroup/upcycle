@@ -55,11 +55,7 @@ class Conv2DBwd(Conv2D):
         return Conv2DBwd(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride, c.pad, c.tr_w)
 
 @dataclass(frozen=True)
-class Conv2DTile(M.WorkItemPerfectCompute):
-    conv : Conv2D
-    i : M.Tensor
-    w : M.Tensor
-    o : M.Tensor
+class Conv2DTile(M.WorkItem):
     write : bool
     ni : int
     ps : Slice
@@ -67,6 +63,14 @@ class Conv2DTile(M.WorkItemPerfectCompute):
     cs : Slice
     ks : Slice
 
+    @property
+    def i(self): return self.inputs[0]
+
+    @property
+    def w(self): return self.inputs[1]
+
+    @property
+    def o(self): return self.outputs[0]
 
     @property
     def flops(self):
@@ -75,17 +79,15 @@ class Conv2DTile(M.WorkItemPerfectCompute):
             len(self.qs) * \
             len(self.ks) * \
             len(self.cs) * \
-            self.conv.r * self.conv.s * 2
+            self.op.r * self.op.s * 2
 
     @property
     def read_trace(self):
-        st = self.conv.stride
+        st = self.op.stride
         yield from self.i[self.ni, self.ps * st, self.qs * st, self.cs]
 
-        if not self.conv.tr_w:
-            yield from self.w[:, :, self.ks, self.cs]
-        else:
-            yield from self.w[:, :, self.cs, self.ks]
+        if not self.op.tr_w: yield from self.w[:, :, self.ks, self.cs]
+        else: yield from self.w[:, :, self.cs, self.ks]
 
     @property
     def write_trace(self):
@@ -127,8 +129,8 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
                     sim.flatmap_place([
                         [
                             Conv2DTile(
-                                arch, conv.dtype,
-                                conv, ti, tw, to, False, n,
+                                arch, conv, [ti, tw], [to], False,
+                                n,
                                 Slice.blk(p, conv.p, 1),
                                 Slice.blk(q, conv.q, 1),
                                 Slice.blk(bc, conv.c, 16),
@@ -156,8 +158,8 @@ def place_conv_pq_spatial2(arch : Arch, conv : Conv2D, sim : M.SimBase):
                     sim.flatmap_place([
                         [
                             Conv2DTile(
-                                arch, conv.dtype,
-                                conv, ti, tw, to, False, n,
+                                arch, conv, [ti, tw], [to], False,
+                                n,
                                 Slice.blk(p, conv.p, 1),
                                 Slice.blk(q, conv.q, 1),
                                 Slice.blk(bc, conv.c, 16),
@@ -239,8 +241,8 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
         off += sim.flatmap_place([
             [
                 Conv2DTile(
-                    arch, conv.dtype,
-                    conv, ti, tw, to, False, ni,
+                    arch, conv, [ti, tw], [to], False,
+                    ni,
                     Slice.blk(bp, conv.p, 1),
                     Slice.blk(bq, conv.q, qblk),
                     Slice.blk(bc, conv.c, 16),
@@ -257,11 +259,7 @@ def place_conv2d_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv2d_flatmap)
 
 @dataclass(frozen=True)
-class Conv2DDiTile(M.WorkItemPerfectCompute):
-    conv : Conv2DBwd
-    di : M.Tensor
-    w : M.Tensor
-    do : M.Tensor
+class Conv2DDiTile(M.WorkItem):
     write : bool
     ni : int
     hs : Slice
@@ -269,17 +267,25 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
     cs : Slice
     ks : Slice
 
+    @property
+    def do(self): return self.inputs[0]
+
+    @property
+    def w(self): return self.inputs[1]
+
+    @property
+    def di(self): return self.outputs[0]
 
     @property
     def flops(self):
         flops = 0
         for hi in self.hs.indices:
             for wi in self.ws.indices:
-                ho = hi % self.conv.stride
-                wo = wi % self.conv.stride
+                ho = hi % self.op.stride
+                wo = wi % self.op.stride
 
-                hr = np.ceil((self.conv.r - ho) / self.conv.stride)
-                wr = np.ceil((self.conv.s - wo) / self.conv.stride)
+                hr = np.ceil((self.op.r - ho) / self.op.stride)
+                wr = np.ceil((self.op.s - wo) / self.op.stride)
 
                 flops += hr * wr * len(self.cs) * len(self.ks) * 2
 
@@ -288,15 +294,14 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
 
     @property
     def read_trace(self):
-        st = self.conv.stride
-
+        st = self.op.stride
         yield from self.di[self.ni, self.hs, self.ws, self.cs]
 
         for hi in range(min(len(self.hs), st)):
             for wi in range(min(len(self.ws), st)):
-                ho = hi % self.conv.stride
-                wo = wi % self.conv.stride
-                if not self.conv.tr_w: yield from self.w[ho::st, wo::st, self.ks, self.cs]
+                ho = hi % self.op.stride
+                wo = wi % self.op.stride
+                if not self.op.tr_w: yield from self.w[ho::st, wo::st, self.ks, self.cs]
                 else: yield from self.w[ho::st, wo::st, self.cs, self.ks]
 
         yield from self.do[self.ni, self.hs / st, self.ws / st, self.ks]
@@ -308,11 +313,7 @@ class Conv2DDiTile(M.WorkItemPerfectCompute):
         raise NotImplementedError()
 
 @dataclass(frozen=True)
-class Conv2DDwTile(M.WorkItemPerfectCompute):
-    conv : Conv2DBwd
-    i : M.Tensor
-    dw : M.Tensor
-    do : M.Tensor
+class Conv2DDwTile(M.WorkItem):
     write : bool
     ni : int
 
@@ -325,15 +326,22 @@ class Conv2DDwTile(M.WorkItemPerfectCompute):
     cs : Slice
     ks : Slice
 
+    @property
+    def i(self): return self.inputs[0]
+
+    @property
+    def do(self): return self.inputs[1]
+
+    @property
+    def dw(self): return self.outputs[0]
 
     @property
     def flops(self):
         return len(self.ps) * len(self.qs) * len(self.rs) * len(self.ss) * len(self.cs) * len(self.ks) * 2
 
-
     @property
     def read_trace(self):
-        st = self.conv.stride
+        st = self.op.stride
 
         hs = self.ps * st
         hs = Slice(hs.start, hs.stop, st)
@@ -368,7 +376,7 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
 
     ti = M.Tensor(arch, 1, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
     tw = M.Tensor(arch, 2, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
-    to = M.Tensor(arch, 3, conv.dtype, (n, p, q, k))
+    # to = M.Tensor(arch, 3, conv.dtype, (n, p, q, k))
     tdi = M.Tensor(arch, 4, conv.dtype, (n, h + pad * 2, w + pad * 2, c))
     tdw = M.Tensor(arch, 5, conv.dtype, (r, s, k, c) if not conv.tr_w else (r, s, c, k))
     tdo = M.Tensor(arch, 6, conv.dtype, (n, p, q, k))
@@ -381,8 +389,8 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     off = sim.flatmap_place([
         [
             Conv2DDiTile(
-                arch, conv.dtype,
-                conv, tdi, tw, tdo, False, ni,
+                arch, conv, [tdo, tw], [tdi], False,
+                ni,
                 Slice.blk(bh, conv.h + pad, hblk),
                 Slice.blk(bw, conv.w + pad, wblk),
                 Slice.blk(bc, conv.c, 16),
@@ -398,8 +406,8 @@ def place_conv2d_bwd_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     sim.flatmap_place([
         [
             Conv2DDwTile(
-                arch, conv.dtype,
-                conv, ti, tdw, tdo, False, ni,
+                arch, conv, [ti, tdo], [tdw], False,
+                ni,
                 Slice.blk(bp, conv.p, 16),
                 Slice.blk(bq, conv.q, 16),
                 Slice.blk(br, conv.r, 1),

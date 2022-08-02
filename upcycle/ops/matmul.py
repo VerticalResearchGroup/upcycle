@@ -49,16 +49,21 @@ class LinearBwd(MatmulBwd): pass
 
 
 @dataclass(frozen=True)
-class MatmulTile(M.WorkItemPerfectCompute):
-    mm : Matmul
-    a : M.Tensor
-    b : M.Tensor
-    c : M.Tensor
+class MatmulTile(M.WorkItem):
     write : bool
     li : int
-    ms : slice
-    ns : slice
-    ks : slice
+    ms : Slice
+    ns : Slice
+    ks : Slice
+
+    @property
+    def a(self): return self.inputs[0]
+
+    @property
+    def b(self): return self.inputs[1]
+
+    @property
+    def c(self): return self.outputs[0]
 
     @property
     def flops(self):
@@ -68,32 +73,285 @@ class MatmulTile(M.WorkItemPerfectCompute):
             len(self.ks) * 2
 
     @property
-    def read_trace(self):
-        if not self.mm.tr_a: yield from self.a[self.li, self.ms, self.ks]
-        else: yield from self.a[self.li, self.ks, self.ms]
+    def write_trace(self):
+        if self.write: yield from self.c[self.li, self.ms, self.ns]
 
-        if not self.mm.tr_b: yield from self.b[self.li, self.ks, self.ns]
-        else: yield from self.b[self.li, self.ns, self.ks]
+
+@dataclass(frozen=True)
+class MatmulTileMKKNI8(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 64
+    ttk = 4
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.I8
+        assert not self.op.tr_a
+        assert not self.op.tr_b
 
     @property
-    def write_trace(self):
-        if not self.write: return
-        yield from self.c[self.li, self.ms, self.ns]
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # For each tk chunk, we issue a single VLD4T for A
+                    num_loads += M.nloads(
+                        self.arch, Dtype.I8, mss, self.op.m, kss, self.op.k)
 
+                    # We further subtile k by another factor (ttk) and issue a
+                    # VLB4X4 from B for each ttk chunk
+                    for ksss in kss.subslice(self.ttk):
+                        num_loads += M.nloads(
+                            self.arch, Dtype.I8, ksss, self.op.k, nss, self.op.n)
+
+                        # The number of vector FMAs issued is the product of
+                        # m and n slice sizes.
+                        exec_cyc += len(nss)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ms, self.ks]
+        yield from self.b[self.li, self.ks, self.ns]
+
+@dataclass(frozen=True)
+class MatmulTileMKKNFP16(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 32
+    ttk = 4
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.FP16
+        assert not self.op.tr_a
+        assert not self.op.tr_b
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # For each tk chunk, we issue a single VLD4T for A
+                    num_loads += M.nloads(
+                        self.arch, Dtype.FP16, mss, self.op.m, kss, self.op.k)
+
+                    # We further subtile k by another factor (ttk) and issue a
+                    # VLB4X4 from B for each ttk chunk
+                    for ksss in kss.subslice(self.ttk):
+                        num_loads += M.nloads(
+                            self.arch, Dtype.FP16, ksss, self.op.k, nss, self.op.n)
+
+                        # The number of vector FMAs issued is the product of
+                        # m and n slice sizes.
+                        exec_cyc += len(nss)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ms, self.ks]
+        yield from self.b[self.li, self.ks, self.ns]
+
+@dataclass(frozen=True)
+class MatmulTileMKNKI8(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 64
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.I8
+        assert not self.op.tr_a
+        assert self.op.tr_b
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # For each tk chunk, we issue a single VLD4T for A
+                    num_loads += M.nloads(
+                        self.arch, Dtype.I8, mss, self.op.m, kss, self.op.k)
+
+                    # For MKNK, B is contig. in K, so we just load as many lines
+                    # as are needed to cover the kslice we are operating on.
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.I8,
+                        kss, self.op.k,
+                        nss, self.op.n,
+                        transpose=True)
+
+                    exec_cyc += len(nss) * cld(len(kss), 4)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ms, self.ks]
+        yield from self.b[self.li, self.ns, self.ks]
+
+
+@dataclass(frozen=True)
+class MatmulTileMKNKFP16(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 32
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.FP16
+        assert not self.op.tr_a
+        assert self.op.tr_b
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # For each tk chunk, we issue a single VLD4T for A
+                    num_loads += M.nloads(
+                        self.arch, Dtype.FP16, mss, self.op.m, kss, self.op.k)
+
+                    # For MKNK, B is contig. in K, so we just load as many lines
+                    # as are needed to cover the kslice we are operating on.
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.FP16,
+                        kss, self.op.k,
+                        nss, self.op.n,
+                        transpose=True)
+
+                    exec_cyc += len(nss) * cld(len(kss), 4)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ms, self.ks]
+        yield from self.b[self.li, self.ns, self.ks]
+
+@dataclass(frozen=True)
+class MatmulTileKMKNFP16(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 4
+    ttk = 1
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.FP16
+        assert self.op.tr_a
+        assert not self.op.tr_b
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # for A=KM, we can just do normal loads into VRF
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.FP16,
+                        mss, self.op.m,
+                        kss, self.op.k,
+                        transpose=True)
+
+                    # We further subtile k by another factor (ttk) and issue a
+                    # VLB4X4 from B for each ttk chunk
+                    for ksss in kss.subslice(self.ttk):
+                        num_loads += M.nloads(
+                            self.arch, Dtype.FP16, ksss, self.op.k, nss, self.op.n)
+
+                        # The number of vector FMAs issued is the product of
+                        # m and n slice sizes.
+                        exec_cyc += len(nss)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ks, self.ms]
+        yield from self.b[self.li, self.ks, self.ns]
+
+@dataclass(frozen=True)
+class MatmulTileKMNKFP16(MatmulTile):
+    tm = 16
+    tn = 4
+    tk = 4
+    ttk = 1
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.FP16
+        assert self.op.tr_a
+        assert self.op.tr_b
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for mss in self.ms.subslice(self.tm):
+            for nss in self.ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
+                    # for A=KM, we can just do normal loads into VRF
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.FP16,
+                        mss, self.op.m,
+                        kss, self.op.k,
+                        transpose=True)
+
+                    # We further subtile k by another factor (ttk) and issue a
+                    # VLB4X4 from B for each ttk chunk
+                    for ksss in kss.subslice(self.ttk):
+                        num_loads += M.nloads(
+                            self.arch,
+                            Dtype.FP16,
+                            ksss, self.op.k,
+                            nss, self.op.n,
+                            transpose=True)
+
+                        # The number of vector FMAs issued is the product of
+                        # m and n slice sizes.
+                        exec_cyc += len(nss)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+    @property
+    def read_trace(self):
+        yield from self.a[self.li, self.ks, self.ms]
+        yield from self.b[self.li, self.ks, self.ns]
 
 def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None, offset=0):
+    tile = {
+        (False, False, Dtype.I8): MatmulTileMKKNI8,
+        (False, True, Dtype.I8): MatmulTileMKNKI8,
+        (False, False, Dtype.FP16): MatmulTileMKKNFP16,
+        (False, True, Dtype.FP16): MatmulTileMKNKFP16,
+        (True, False, Dtype.FP16): MatmulTileKMKNFP16,
+        (True, True, Dtype.FP16): MatmulTileKMNKFP16,
+    }[(mm.tr_a, mm.tr_b, mm.dtype)]
+
     return sim.flatmap_place([
         [
-            MatmulTile(
-                arch, mm.dtype,
-                mm, a, b, c, False, li,
-                Slice.blk(bm, mm.m, 16),
-                Slice.blk(bn, mm.n, 8),
-                Slice.blk(bk, mm.k, 64))
-            for bk in range(0, mm.k, 64)
+            tile(
+                arch, mm, [a, b], [c], False,
+                li,
+                Slice.blk(bm, mm.m, tile.tm),
+                Slice.blk(bn, mm.n, tile.tn),
+                Slice.blk(bk, mm.k, tile.tk))
+            for bk in range(0, mm.k, tile.tk)
         ]
-        for bm in range(0, mm.m, 16)
-        for bn in range(0, mm.n, 8)
+        for bm in range(0, mm.m, tile.tm)
+        for bn in range(0, mm.n, tile.tn)
         for li in range(mm.l)
     ], offset=offset, bbox=bbox)
 

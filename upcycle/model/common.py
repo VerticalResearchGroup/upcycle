@@ -15,6 +15,25 @@ from . import noc
 
 logger = logging.getLogger(__name__)
 
+def nloads(arch : Arch, dtype : Dtype, r : Slice, R : int, c : Slice, C : int, transpose=False):
+    dtsize = Dtype.sizeof(dtype)
+
+    if transpose:
+        r, c = c, r
+        R, C = C, R
+
+    if len(c) == C:
+        # In this case, the rows we are loading are contiguous in memory, so we
+        # can extract load-reuse in the case where the length of the row is
+        # smaller than the cache line size.
+        return cld(len(r) * len(c) * dtsize, arch.vbytes)
+    else:
+        # Here, rows aren't contiguous. While there is potential to still
+        # extract some reuse, we ignore that since it's not likely to be the
+        # common case and won't buy us much performance.
+        return len(r) * cld(len(c) * dtsize, arch.vbytes)
+
+
 @functools.lru_cache(maxsize=4096)
 def _gen_offs(stride, d):
     if isinstance(d, int): return [d * stride]
@@ -102,26 +121,24 @@ class Tensor:
 @dataclass(frozen=True)
 class WorkItem:
     arch : Arch
-    dtype : Dtype
-
-    @property
-    def exec_lat(self): raise NotImplementedError()
+    op : Operator
+    inputs : list[Tensor]
+    outputs : list[Tensor]
 
     @property
     def flops(self): raise NotImplementedError()
+
+    @property
+    def perfect_exec_lat(self): return self.flops / self.arch.peak_opc(self.op.dtype)
+
+    @property
+    def exec_lat(self): return self.perfect_exec_lat
 
     @property
     def read_trace(self)  -> Iterator[int]: raise NotImplementedError()
 
     @property
     def write_trace(self)  -> Iterator[int]: raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class WorkItemPerfectCompute(WorkItem):
-    @property
-    def exec_lat(self): return self.flops / self.arch.peak_opc(self.dtype)
-
 
 placement_funcs = {}
 
@@ -252,7 +269,9 @@ class Sim(SimBase):
             if step not in self.dest_maps:
                 self.dest_maps[step] = c_model.DestList()
 
-            self.log_exec_cycles(step, tid, wi.exec_lat)
+            exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
+
+            self.log_exec_cycles(step, tid, exec_lat)
             self.flops += wi.flops
 
             if USE_C_TRACE:
