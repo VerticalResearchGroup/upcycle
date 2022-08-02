@@ -33,7 +33,7 @@ PYBIND11_MODULE(c_model, m) {
             size_t,
             const std::vector<size_t>&,
             const std::vector<size_t>&,
-            const std::vector<Slice>&
+            const std::vector<size_t>&
         >())
         .def_readonly("shape", &AffineTile::shape)
         .def_readonly("strides", &AffineTile::strides)

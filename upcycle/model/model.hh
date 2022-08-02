@@ -87,7 +87,7 @@ struct AffineTile {
     size_t tid;
     std::vector<size_t> shape;
     std::vector<size_t> strides;
-    std::vector<Slice> idx;
+    std::vector<size_t> idx;
 };
 
 struct TileMask {
@@ -129,7 +129,7 @@ void tile_read_trace1(Cache& l1, DestList& dl, AffineTile& at, uint64_t tid) {
     const uint64_t upper = at.tid << 32;
     uint64_t cur = (uint64_t)-1;
 
-    const auto& i0_slice = at.idx[0];
+    const auto& i0_slice = Slice {at.idx[0], at.idx[1], at.idx[2]};
     for (size_t i0 = i0_slice.start; i0 < i0_slice.stop; i0 += i0_slice.step) {
         const uint64_t i0_base = i0 * at.strides[0];
         const uint64_t addr = upper | i0_base;
@@ -143,10 +143,10 @@ void tile_read_trace2(Cache& l1, DestList& dl, AffineTile& at, uint64_t tid) {
     const uint64_t upper = at.tid << 32;
     uint64_t cur = (uint64_t)-1;
 
-    const auto& i0_slice = at.idx[0];
+    const auto& i0_slice = Slice {at.idx[0], at.idx[1], at.idx[2]};
+    const auto& i1_slice = Slice {at.idx[3], at.idx[4], at.idx[5]};
     for (size_t i0 = i0_slice.start; i0 < i0_slice.stop; i0 += i0_slice.step) {
         const uint64_t i0_base = i0 * at.strides[0];
-        const auto& i1_slice = at.idx[1];
         for (size_t i1 = i1_slice.start; i1 < i1_slice.stop; i1 += i1_slice.step) {
             const uint64_t i1_base = i1 * at.strides[1];
             const uint64_t addr = upper | (i0_base + i1_base);
@@ -161,13 +161,13 @@ void tile_read_trace3(Cache& l1, DestList& dl, AffineTile& at, uint64_t tid) {
     const uint64_t upper = at.tid << 32;
     uint64_t cur = (uint64_t)-1;
 
-    const auto& i0_slice = at.idx[0];
+    const auto& i0_slice = Slice {at.idx[0], at.idx[1], at.idx[2]};
+    const auto& i1_slice = Slice {at.idx[3], at.idx[4], at.idx[5]};
+    const auto& i2_slice = Slice {at.idx[6], at.idx[7], at.idx[8]};
     for (size_t i0 = i0_slice.start; i0 < i0_slice.stop; i0 += i0_slice.step) {
         const uint64_t i0_base = i0 * at.strides[0];
-        const auto& i1_slice = at.idx[1];
         for (size_t i1 = i1_slice.start; i1 < i1_slice.stop; i1 += i1_slice.step) {
             const uint64_t i1_base = i1 * at.strides[1];
-            const auto& i2_slice = at.idx[2];
             for (size_t i2 = i2_slice.start; i2 < i2_slice.stop; i2 += i2_slice.step) {
                 const uint64_t i2_base = i2 * at.strides[2];
                 const uint64_t addr = upper | (i0_base + i1_base + i2_base);
@@ -183,16 +183,16 @@ void tile_read_trace4(Cache& l1, DestList& dl, AffineTile& at, uint64_t tid) {
     const uint64_t upper = at.tid << 32;
     uint64_t cur = (uint64_t)-1;
 
-    const auto& i0_slice = at.idx[0];
+    const auto& i0_slice = Slice {at.idx[0], at.idx[1], at.idx[2]};
+    const auto& i1_slice = Slice {at.idx[3], at.idx[4], at.idx[5]};
+    const auto& i2_slice = Slice {at.idx[6], at.idx[7], at.idx[8]};
+    const auto& i3_slice = Slice {at.idx[9], at.idx[10], at.idx[11]};
     for (size_t i0 = i0_slice.start; i0 < i0_slice.stop; i0 += i0_slice.step) {
         const uint64_t i0_base = i0 * at.strides[0];
-        const auto& i1_slice = at.idx[1];
         for (size_t i1 = i1_slice.start; i1 < i1_slice.stop; i1 += i1_slice.step) {
             const uint64_t i1_base = i1 * at.strides[1];
-            const auto& i2_slice = at.idx[2];
             for (size_t i2 = i2_slice.start; i2 < i2_slice.stop; i2 += i2_slice.step) {
                 const uint64_t i2_base = i2 * at.strides[2];
-                const auto& i3_slice = at.idx[3];
                 for (size_t i3 = i3_slice.start; i3 < i3_slice.stop; i3 += i3_slice.step) {
                     const uint64_t i3_base = i3 * at.strides[3];
                     const uint64_t addr = upper | (i0_base + i1_base + i2_base + i3_base);
@@ -209,19 +209,19 @@ void tile_read_trace5(Cache& l1, DestList& dl, AffineTile& at, uint64_t tid) {
     const uint64_t upper = at.tid << 32;
     uint64_t cur = (uint64_t)-1;
 
-    const auto& i0_slice = at.idx[0];
+    const auto& i0_slice = Slice {at.idx[0], at.idx[1], at.idx[2]};
+    const auto& i1_slice = Slice {at.idx[3], at.idx[4], at.idx[5]};
+    const auto& i2_slice = Slice {at.idx[6], at.idx[7], at.idx[8]};
+    const auto& i3_slice = Slice {at.idx[9], at.idx[10], at.idx[11]};
+    const auto& i4_slice = Slice {at.idx[12], at.idx[13], at.idx[14]};
     for (size_t i0 = i0_slice.start; i0 < i0_slice.stop; i0 += i0_slice.step) {
         const uint64_t i0_base = i0 * at.strides[0];
-        const auto& i1_slice = at.idx[1];
         for (size_t i1 = i1_slice.start; i1 < i1_slice.stop; i1 += i1_slice.step) {
             const uint64_t i1_base = i1 * at.strides[1];
-            const auto& i2_slice = at.idx[2];
             for (size_t i2 = i2_slice.start; i2 < i2_slice.stop; i2 += i2_slice.step) {
                 const uint64_t i2_base = i2 * at.strides[2];
-                const auto& i3_slice = at.idx[3];
                 for (size_t i3 = i3_slice.start; i3 < i3_slice.stop; i3 += i3_slice.step) {
                     const uint64_t i3_base = i3 * at.strides[3];
-                    const auto& i4_slice = at.idx[4];
                     for (size_t i4 = i4_slice.start; i4 < i4_slice.stop; i4 += i4_slice.step) {
                         const uint64_t i4_base = i4 * at.strides[4];
                         const uint64_t addr = upper | (i0_base + i1_base + i2_base + i3_base + i4_base);

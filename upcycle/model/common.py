@@ -97,20 +97,18 @@ class Tensor:
         idx = tuple(map(_convert_slice, enumerate(_idx)))
         return self._getlines(idx)
 
+    def _convert_slice(self, i, s):
+        if isinstance(s, int): return [s, s + 1, 1]
+        elif isinstance(s, Slice): return [s.start, s.stop, s.step]
+        elif isinstance(s, slice):
+            return [
+                s.start if s.start is not None else 0,
+                s.stop if s.stop is not None else self.shape[i],
+                s.step if s.step is not None else 1]
+        else: assert False, f'Invalid slice: {s}'
+
     def c_trace(self, _idx):
-        def _convert_slice(x):
-            (i, s) = x
-            if isinstance(s, int): return Slice(s, s + 1, 1)
-            elif isinstance(s, Slice): return s
-            elif isinstance(s, slice):
-                return Slice.from_pyslice(s, self.shape[i])
-            else: assert False, f'Invalid slice: {s}'
-
-        def _convert_to_cslice(s):
-            assert isinstance(s, Slice)
-            return c_model.Slice(s.start, s.stop, s.step)
-
-        idx = tuple(map(_convert_to_cslice, map(_convert_slice, enumerate(_idx))))
+        idx = sum((self._convert_slice(i, x) for i, x in enumerate(_idx)), start=[])
         return [c_model.AffineTile(self.oid, self.shape, self.strides, idx)]
 
     def __getitem__(self, _idx):
