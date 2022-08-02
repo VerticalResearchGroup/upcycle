@@ -84,7 +84,8 @@ def make_arch(arch_name, noc_ports):
         l1_capacity=64 * 1024,
         l1_assoc=8,
         group='4,8',
-        mapping='affine')
+        mapping='affine',
+        perfect_compute=True)
     return U.arch.arch_factory(arch_name, **arch_kwargs)
 
 def make_workload(args):
