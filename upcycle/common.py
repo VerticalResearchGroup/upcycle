@@ -7,6 +7,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_aggressive_mem = False
+
+def enable_aggressive_mem():
+    global _aggressive_mem
+    _aggressive_mem = True
+
+def disable_aggressive_mem():
+    global _aggressive_mem
+    _aggressive_mem = False
+
+def aggressive_mem():
+    global _aggressive_mem
+    return _aggressive_mem
+
 # Adapted from https://stackoverflow.com/questions/2536307/decorators-in-the-python-standard-lib-deprecated-specifically
 def deprecated(func):
     @functools.wraps(func)

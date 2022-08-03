@@ -123,6 +123,7 @@ infer_apps = [
 ]
 
 if __name__ == '__main__':
+    U.enable_aggressive_mem()
     parser = argparse.ArgumentParser(description='Simulate All Inference Apps and Print Results')
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-v', '--verbose', action='store_true')

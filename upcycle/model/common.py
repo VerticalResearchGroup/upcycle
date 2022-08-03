@@ -325,10 +325,11 @@ def common_sim(
     total_traffic = noc.zero_traffic(arch)
     cycles = 0
     compute_cyc = 0
+    nsteps = sim.nsteps
 
     kwstats['rss'] = []
 
-    for step in range(sim.nsteps):
+    for step in range(nsteps):
         dest_map = sim.dest_maps.get(step, None)
         max_exec_cyc = max(sim.exec_cycles[step])
         traffic = noc_sim_func(arch, kwstats, dest_map)
@@ -354,5 +355,12 @@ def common_sim(
 
     logger.debug(f'Compute drain latency: {compute_cyc}')
 
+    if aggressive_mem():
+        del kwstats
+        del sim
+        del total_traffic
+        total_traffic = None
+        kwstats = {}
+
     cycles += compute_cyc
-    return SimResult(sim.nsteps, cycles, total_traffic, kwstats)
+    return SimResult(nsteps, cycles, total_traffic, kwstats)
