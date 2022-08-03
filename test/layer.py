@@ -7,6 +7,7 @@ import multiprocessing
 import time
 import argparse
 import tqdm
+# import tracemalloc
 
 blue = '\x1b[38;5;39m'
 green = '\033[92m'
@@ -34,6 +35,7 @@ def init_pool_processes(c, l):
     lock = l
 
 def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
+    # tracemalloc.start()
     logger.debug(f'Simulating {op}...')
     global counter
     global lock
@@ -41,6 +43,13 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     sim_kwargs['lock'] = lock
     result = U.model.simulate(arch, op, **sim_kwargs)
     logger.debug(f'Finished {op}')
+    # snapshot = tracemalloc.take_snapshot()
+    # top_stats = snapshot.statistics('lineno')
+    # logger.debug("[ Top 10 memory allocation sites ]")
+    # for stat in top_stats[:10]:
+    #     logger.debug(stat)
+    # logger.debug("[ ============================== ]")
+
     return result
 
 def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):

@@ -16,8 +16,8 @@ class NocDir(IntEnum):
     EJECT = 5
     DIRMAX = 6
 
-def zero_traffic(arch : Arch, nsteps : int):
-    return np.zeros((nsteps, arch.nrows, arch.ncols, NocDir.DIRMAX), dtype=np.uint32)
+def zero_traffic(arch : Arch):
+    return np.zeros((arch.nrows, arch.ncols, NocDir.DIRMAX), dtype=np.uint32)
 
 @dataclass
 class Router:

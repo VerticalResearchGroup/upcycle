@@ -322,7 +322,7 @@ def common_sim(
     place_op(placement_mode, arch, op, sim)
 
     logger.debug(f'Simulating {sim.nsteps} steps with {sim.flops} flops...')
-    traffic = noc.zero_traffic(arch, sim.nsteps)
+    total_traffic = noc.zero_traffic(arch)
     cycles = 0
     compute_cyc = 0
 
@@ -331,8 +331,9 @@ def common_sim(
     for step in range(sim.nsteps):
         dest_map = sim.dest_maps.get(step, None)
         max_exec_cyc = max(sim.exec_cycles[step])
-        traffic[step, :, :, :] = noc_sim_func(arch, kwstats, dest_map)
-        net_latency = np.max(traffic[step, :, :, :]) / arch.noc_ports_per_dir
+        traffic = noc_sim_func(arch, kwstats, dest_map)
+        net_latency = np.max(traffic) / arch.noc_ports_per_dir
+        total_traffic += traffic
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f'Step {step + 1}/{sim.nsteps}: Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
@@ -354,4 +355,4 @@ def common_sim(
     logger.debug(f'Compute drain latency: {compute_cyc}')
 
     cycles += compute_cyc
-    return SimResult(sim.nsteps, cycles, traffic, kwstats)
+    return SimResult(sim.nsteps, cycles, total_traffic, kwstats)

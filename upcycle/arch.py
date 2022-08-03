@@ -93,6 +93,7 @@ def arch_cli_params(parser):
     parser.add_argument('--noc-ports', type=int, default=1)
     parser.add_argument('--l1-capacity', type=int, default=64*1024)
     parser.add_argument('--l1-assoc', type=int, default=16)
+    parser.add_argument('--l1-rports', type=int, default=2)
     parser.add_argument('--line-size', type=int, default=32)
     parser.add_argument('--group', type=str, default='4,8')
     parser.add_argument('--max-dests', type=int, default=8)
@@ -107,17 +108,17 @@ def arch_factory(arch_name, freq=2.4e9, vbits=512, macs=1, nrows=32, ncols=64, *
     if arch_name == 'oracle':
         arch = OracleArch(
             freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
-            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'])
+            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'], kwargs['l1_rports'])
     elif arch_name == 'bg':
         [grows, gcols] = list(map(int, kwargs['group'].split(',')))
         arch = BgroupArch(
             freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
-            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'],
+            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'], kwargs['l1_rports'],
             grows, gcols)
     elif arch_name == 'fbc':
         arch = FbcastArch(
             freq, vbits, macs, nrows, ncols, mapping, kwargs['perfect_compute'],
-            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'],
+            kwargs['noc_ports'], kwargs['line_size'], kwargs['l1_capacity'], kwargs['l1_assoc'], kwargs['l1_rports'],
             kwargs['max_dests'])
 
     return arch
