@@ -21,6 +21,9 @@ class TileMapping(IntEnum):
 
 @dataclass(order=True, frozen=True)
 class Arch:
+    """Base class for all UPCYCLE architectures.
+    """
+
     freq : float
     vbits : int
     macs : int
@@ -75,14 +78,23 @@ class Arch:
         tid = (addr >> self.lbits) & (self.ntiles - 1)
         return (tid // self.ncols), (tid % self.ncols)
 
+@dataclass(order=True, frozen=True)
+class OracleArch(Arch): pass
 
 @dataclass(order=True, frozen=True)
 class BgroupArch(Arch):
+    """Broadcast-group Architecture.
+
+    This architecture designates subsets of tiles as broadcast groups which can
+    be the target of a PUSH memory read. This represents a more realistic
+    architecture where the destination bitmask of a cache line can fit within
+    the packet header on the network.
+
+    # of groups = (nrows / grows) * (ncols / gcols)
+    """
     grows : int = 4
     gcols : int = 8
 
-@dataclass(order=True, frozen=True)
-class OracleArch(Arch): pass
 
 @dataclass(order=True, frozen=True)
 class FbcastArch(Arch):
@@ -101,6 +113,11 @@ def arch_cli_params(parser):
     parser.add_argument('-x', '--perfect-compute', action='store_true')
 
 def arch_factory(arch_name, freq=2.4e9, vbits=512, macs=1, nrows=32, ncols=64, **kwargs):
+    """Factory function for creating UPCYCLE architectures.
+
+    FIXME: This function is a bit of a cludge and should be cleaned up.
+    """
+
     mapping = TileMapping.AFFINE
     if kwargs['mapping'] == 'hilbert':
         mapping = TileMapping.HILBERT

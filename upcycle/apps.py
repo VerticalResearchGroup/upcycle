@@ -6,12 +6,18 @@ from . import ops
 
 @dataclass
 class Trace:
+    """A trace of DL Operators."""
     oplist : list[ops.Operator]
 
     @property
     def flops(self): return sum(op.flops for op in self.oplist)
 
     def infer(self):
+        """Setup this trace for Inference.
+
+        This applies transformations which optimize certain Operators for
+        inference (E.g. transposing weights for Linear layers).
+        """
         for i, op in enumerate(self.oplist):
             if type(op) is ops.Linear:
                 self.oplist[i] = ops.Linear(
@@ -30,6 +36,12 @@ class Trace:
         return self
 
     def train(self, bwd_only=False):
+        """Setup this trace for Training.
+
+        This function will find and append backward operations to the trace for
+        every trainable forward operator. It will also apply transformations to
+        optimize operators for training performance.
+        """
         for i, op in enumerate(self.oplist):
             if type(op) is ops.Linear:
                 self.oplist[i] = ops.Linear(

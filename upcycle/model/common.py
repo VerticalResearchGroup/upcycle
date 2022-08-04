@@ -16,6 +16,13 @@ from . import noc
 logger = logging.getLogger(__name__)
 
 def nloads(arch : Arch, dtype : Dtype, r : Slice, R : int, c : Slice, C : int, transpose=False, contig=True):
+    """Compute number of loads for a given 2D slice of memory.
+
+    This will compute the number of cache-line sized loads needed to bring a
+    2D slice of memory into the core. When the rows are contiguous in memory and
+    are smaller than the line-size, we can optimize loads by making use of the
+    overlap.
+    """
     dtsize = Dtype.sizeof(dtype)
 
     if transpose:
@@ -42,6 +49,12 @@ def _gen_offs(stride, d):
 
 @functools.lru_cache(maxsize=4096)
 def _gen_ids_rec(shape, strides, idx):
+    """Generate 1D offsets for a Nd-array slice.
+
+    This function is used for producing addresses into a Tensor for a given
+    slice. This is a very performance critical function so we make use of
+    caching to try to speed up the process.
+    """
     if len(shape) == 1: return list(_gen_offs(strides[0], idx[0]))
     else: return sum([
         list(map(lambda i: i + off, _gen_ids_rec(shape[1:], strides[1:], idx[1:])))
@@ -52,13 +65,17 @@ USE_C_TRACE = True
 
 @dataclass(frozen=True)
 class Tensor:
+    """Represents an operand tensor for a DL operator."""
     arch : Arch
-    oid : int
+    oid : int # "Output ID"
     dtype : Dtype
     shape : tuple
     strides : tuple = None
 
     def __post_init__(self):
+        # N.B. frozen dataclasses will yell at us if we assign attributes willy-
+        # nilly. We use object.__setattr__ to bypass that. The strides are pre-
+        # computed in the constructor for performance reasons.
         object.__setattr__(
             self,
             'strides',
@@ -69,10 +86,14 @@ class Tensor:
         line_mask = (1 << int(np.ceil(np.log2(self.arch.line_size)))) - 1
         object.__setattr__(self, 'line_mask', line_mask)
 
+        # N.B. We don't support >4GB tensors because we shift oid by 32 bits to
+        # produce an address. This is a somewhat arbitrary limit so we can
+        # change it in the future if needed.
         assert np.prod(self.shape) * Dtype.sizeof(self.dtype) < 2**32, \
             f'Address space doesn\'t support Tensors > 4GB!'
 
     def _getlines(self, idx):
+        """Given a index slice, produce a line-level address trace."""
         assert len(self.shape) == len(idx)
         upper = self.oid << 32
         last = None
@@ -87,6 +108,7 @@ class Tensor:
         return lines
 
     def py_trace(self, _idx):
+        """Frontend for _getlines."""
         def _convert_slice(x):
             (i, s) = x
             if isinstance(s, int): return s
@@ -108,16 +130,27 @@ class Tensor:
         else: assert False, f'Invalid slice: {s}'
 
     def c_trace(self, _idx):
+        """Alternate C++ implementation for py_trace.
+
+        N.B. py_trace still exists because I needed it for debugging the C++
+        version. Also, the C++ version only supports upto 5D tensors, so we
+        would need to fallback to the Python version if we ever run into >5D.
+        """
         idx = sum((self._convert_slice(i, x) for i, x in enumerate(_idx)), start=[])
         return [c_model.AffineTile(self.oid, self.shape, self.strides, idx)]
 
     def __getitem__(self, _idx):
+        # N.B. We use Python's __getitem__ as a frontend for all this indexing
+        # nonsense for cosmetic reasons. This way we can make a tensor and then
+        # write something like A[1:2, 5:, :] and it will produce all the
+        # addresses for that slice.
         global USE_C_TRACE
         if USE_C_TRACE: return self.c_trace(_idx)
         else: return self.py_trace(_idx)
 
 @dataclass(frozen=True)
 class WorkItem:
+    """Base class for all workitems."""
     arch : Arch
     op : Operator
     inputs : list[Tensor]
@@ -137,6 +170,20 @@ class WorkItem:
 
     @property
     def write_trace(self)  -> Iterator[int]: raise NotImplementedError()
+
+#
+# Placement Functions.
+#
+# Here we create a dispatch table for operator placement. It is key'd by
+# (mode, type(arch), type(op)) where,
+#
+# mode: the placement "mode" (arbitrary string identifier given by us)
+# type(arch): the type of the architecture (e.g. "OracleArch")
+# type(op): the type of the operator (e.g. "Conv2D")
+#
+# register_placement serves as a decorator that other parts of the codebase can
+# use to insert placement functions into this table.
+#
 
 placement_funcs = {}
 
@@ -161,11 +208,18 @@ def register_placement(mode_s, archclass_s, opclass_s):
 
 @dataclass(frozen=True)
 class SimResult:
+    """The output of the simulator."""
     nsteps : int
     cycles : int
     traffic : np.ndarray
     kwstats : dict
 
+#
+# Simulator functions.
+#
+# Here we create a dispatch table for simulator functions. It is key'd by only
+# the class of architecture being simulated (e.g. "OracleArch").
+#
 sim_funcs = {}
 
 def register_sim(archclass):
@@ -176,6 +230,7 @@ def register_sim(archclass):
     return decorator
 
 def simulate(arch : Arch, op : Operator, *args, **kwargs) -> SimResult:
+    """Main entry point for the performance model."""
     global sim_funcs
     return sim_funcs[type(arch)](arch, op, *args, **kwargs)
 
@@ -187,6 +242,16 @@ def get_dests(arch : Arch, mask):
     return list(tid_to_rc(tid) for tid in mask.tiles())
 
 class SimBase:
+    """Base class for the simulator object.
+
+    This class serves as the exposed interface for the placement functions. That
+    is, placement gets a sim object and can use the functions declared here to
+    carry out placement.
+
+    N.B. The main reason this class is abstract is becasue I wanted a quick way
+    to be able to count the number of steps needed for a given layer
+    (See StepCounter below).
+    """
     def __init__(self, arch):
         self.arch = arch
 
@@ -218,6 +283,11 @@ def place_op(mode : str, arch : Arch, op : Operator, sim : SimBase, check_flops=
         logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
 
 class StepCounter(SimBase):
+    """Dummy sim object used to count number of steps for a layer.
+
+    N.B. This is used to predict runtime ahead of execution. See num_steps()
+    below.
+    """
     def __init__(self, arch : Arch):
         super().__init__(arch)
         self.cur_step = [0 for _ in range(arch.ntiles)]
@@ -297,6 +367,7 @@ class Sim(SimBase):
 
 
 def simulate_noc(arch : Arch, dest_map : dict, addr_llc_coords : Callable):
+    """Default NoC simulator."""
     raise NotImplementedError()
 
 def num_steps(
@@ -305,6 +376,11 @@ def num_steps(
     placement_mode : str = 'naive',
     **kwargs
 ):
+    """Count the number of steps needed to execute an operator.
+
+    N.B. This is mainly used to count total steps ahead of time for progress-
+    reporting purposes. It serves no functional purpose.
+    """
     sim = StepCounter(arch)
     place_op(placement_mode, arch, op, sim, check_flops=False)
     return sim.nsteps
@@ -317,8 +393,17 @@ def common_sim(
     counter : multiprocessing.Value = None,
     lock : multiprocessing.Lock = None,
 ):
+    """Primary entry point for most simulator.
+
+    N.B. This function will be called for most architectures. There could be a
+    reason to write a custom sim function for a particular architecture in the
+    future if there are some wacky features we want to model.
+    """
     sim = Sim(arch)
     kwstats = {}
+
+    # place_op will call the placement function for the given operator an
+    # collect step-wise information such as the read trace.
     place_op(placement_mode, arch, op, sim)
 
     logger.debug(f'Simulating {sim.nsteps} steps with {sim.flops} flops...')
@@ -329,6 +414,8 @@ def common_sim(
 
     kwstats['rss'] = []
 
+    # Main simulator loop. By now we've already done all the core modeling, so
+    # we just need to simulate the traffic for each step.
     for step in range(nsteps):
         dest_map = sim.dest_maps.get(step, None)
         max_exec_cyc = max(sim.exec_cycles[step])
@@ -339,6 +426,8 @@ def common_sim(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f'Step {step + 1}/{sim.nsteps}: Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
 
+        # Update compute_cyc after this line because compute is one time-step
+        # behind prefetch.
         cycles += max(compute_cyc, net_latency)
         compute_cyc = max_exec_cyc
 
@@ -355,6 +444,8 @@ def common_sim(
 
     logger.debug(f'Compute drain latency: {compute_cyc}')
 
+    # I'm not sure if this actually helps at all, but here's some stuff that
+    # might be useful for reducing memory usage.
     if aggressive_mem():
         del kwstats
         del sim

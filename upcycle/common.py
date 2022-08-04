@@ -7,6 +7,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# "Aggressive memory" is intended to refer to a set of behaviors that attempt to
+# reduce RAM usage as much as possible. This is to mitigate the risk of running
+# out of memory for certain NN layers which seem to eat up a lot of RAM.
 _aggressive_mem = False
 
 def enable_aggressive_mem():
@@ -31,6 +34,14 @@ def deprecated(func):
 
 @dataclass(frozen=True, order=True)
 class Slice:
+    """A custom slice object.
+
+    This class represents a 1D strided list of indices similar to the build-in
+    Python slice class. This class adds some additional functionality beyond
+    what Python slice's provide such as the ability to scale the range, or check
+    inclusion. It is used in many places, such as providing a nice way to index
+    into Tensors in a compact way.
+    """
     start : int
     stop : int
     step : int = 1
@@ -77,14 +88,21 @@ class Slice:
             yield i // self.step, i, min(i + self.step, self.stop)
 
 def blkdiv(n, b):
+    """Divide n into b blocks of equal size.
+
+    If n is not divisible by b, some blocks will be smaller by 1.
+    """
     nn = n // b
     for i in range(b):
         r = nn + (1 if i < n % b else 0)
         yield r
 
-def cld(n : int, d : int): return (n // d) + (1 if n % d > 0 else 0)
+def cld(n : int, d : int):
+    """Ceiling-divide."""
+    return (n // d) + (1 if n % d > 0 else 0)
 
 class Dtype(IntEnum):
+    """Enum for the different data types supported by UPCYCLE."""
     I8 = 1
     FP16 = 2
 
@@ -106,7 +124,17 @@ class Dtype(IntEnum):
 
 @dataclass(frozen=True)
 class Operator:
+    """Base class for an Operator."""
+
+    # Data type of the operand tensors
     dtype : Dtype
+
+    # Whether or not this operator must be differentiated for backward-
+    # propagation.
+    #
+    # N.B. This is used in some cases where training a network may include some
+    # "frozen" layers which are pre-trained ahead of time, and so are only
+    # involved in the forward pass.
     train : bool
 
     @property

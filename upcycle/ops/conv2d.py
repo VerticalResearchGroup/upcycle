@@ -10,15 +10,23 @@ logger = logging.getLogger(__name__)
 @operator
 @dataclass(frozen=True)
 class Conv2D(Operator):
+    """2D Convolution Operator."""
+    # Batch
     n : int
+    # Input: (n, h, w, c)
     h : int
     w : int
     c : int
+
+    # Output: (n, p, q, k)
     p : int
     q : int
     k : int
+
+    # Filter: (r, s, k, c)
     r : int
     s : int
+
     stride : int
     pad : int
     tr_w : bool
