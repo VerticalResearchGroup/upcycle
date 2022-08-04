@@ -15,14 +15,14 @@ from . import noc
 
 logger = logging.getLogger(__name__)
 
-def nloads(arch : Arch, dtype : Dtype, r : Slice, R : int, c : Slice, C : int, transpose=False):
+def nloads(arch : Arch, dtype : Dtype, r : Slice, R : int, c : Slice, C : int, transpose=False, contig=True):
     dtsize = Dtype.sizeof(dtype)
 
     if transpose:
         r, c = c, r
         R, C = C, R
 
-    if len(c) == C:
+    if len(c) == C and contig:
         # In this case, the rows we are loading are contiguous in memory, so we
         # can extract load-reuse in the case where the length of the row is
         # smaller than the cache line size.

@@ -94,6 +94,81 @@ class Conv2DTile(M.WorkItem):
         if not self.write: return
         raise NotImplementedError()
 
+@dataclass(frozen=True)
+class Conv2DTileI8(Conv2DTile):
+    tk = 16 # M
+    tp = 1
+    tq = 4  # N
+    tc = 64 # K
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.I8
+        assert not self.op.tr_w
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for _ in self.ps.subslice(self.tp):
+            for qss in self.qs.subslice(self.tq):
+                for br in range(self.op.r * self.op.s):
+                    for kss in self.ks.subslice(self.tk):
+                        for css in self.cs.subslice(self.tc):
+                            num_loads += M.nloads(
+                                self.arch, Dtype.I8, kss, self.op.k, css, self.op.c)
+
+                            num_loads += M.nloads(
+                                self.arch,
+                                Dtype.I8,
+                                kss, self.op.k,
+                                qss, self.op.q,
+                                transpose=True,
+                                contig=self.op.stride == 1)
+
+                            exec_cyc += len(qss) * cld(len(css), 4)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
+
+@dataclass(frozen=True)
+class Conv2DTileI8TW(Conv2DTile):
+    tk = 16 # M
+    tp = 1
+    tq = 4  # N
+    tc = 4  # K
+
+    def __post_init__(self):
+        assert self.op.dtype == Dtype.I8
+        assert self.op.tr_w
+
+    @property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for _ in self.ps.subslice(self.tp):
+            for qss in self.qs.subslice(self.tq):
+                for br in range(self.op.r * self.op.s):
+                    for kss in self.ks.subslice(self.tk):
+                        for css in self.cs.subslice(self.tc):
+                            num_loads += M.nloads(
+                                self.arch,
+                                Dtype.I8,
+                                kss, self.op.k,
+                                css, self.op.c,
+                                transpose=True)
+
+                            num_loads += M.nloads(
+                                self.arch,
+                                Dtype.I8,
+                                kss, self.op.k,
+                                qss, self.op.q,
+                                transpose=True,
+                                contig=self.op.stride == 1)
+
+                            exec_cyc += len(qss) * cld(len(css), 4)
+
+        return max(num_loads / self.arch.l1_rports, exec_cyc)
+
 def make_conv2d_tensors(arch : Arch, conv : Conv2D):
     ti = M.Tensor(
         arch,
@@ -114,7 +189,12 @@ def make_conv2d_tensors(arch : Arch, conv : Conv2D):
 def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
 
-    kblk = 16
+    tile = {
+        (Dtype.I8, False): Conv2DTileI8,
+        (Dtype.I8, True): Conv2DTileI8TW,
+    }[(conv.dtype, conv.tr_w)]
+
+    kblk = tile.tk
     kgrp = conv.k // kblk
 
     pgrp = conv.p / arch.nrows
@@ -128,21 +208,26 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
                     col = (int(q / qgrp) + (k // kblk) * (arch.ncols // kgrp))
                     sim.flatmap_place([
                         [
-                            Conv2DTile(
+                            tile(
                                 arch, conv, [ti, tw], [to], False,
                                 n,
                                 Slice.blk(p, conv.p, 1),
                                 Slice.blk(q, conv.q, 1),
-                                Slice.blk(bc, conv.c, 16),
+                                Slice.blk(bc, conv.c, tile.tc),
                                 Slice.blk(k, conv.k, kblk))
-                            for bc in range(0, conv.c, 16)
+                            for bc in range(0, conv.c, tile.tc)
                         ]
                     ], bbox=(row, row + 1, col, col + 1))
 
 def place_conv_pq_spatial2(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
 
-    kblk = 16
+    tile = {
+        (Dtype.I8, False): Conv2DTileI8,
+        (Dtype.I8, True): Conv2DTileI8TW,
+    }[(conv.dtype, conv.tr_w)]
+
+    kblk = tile.tk
 
     qk = conv.q * conv.k // kblk
     qkgrp = qk // arch.ncols
@@ -157,14 +242,14 @@ def place_conv_pq_spatial2(arch : Arch, conv : Conv2D, sim : M.SimBase):
                     col = int((q * conv.k // kblk + k // kblk) / qkgrp)
                     sim.flatmap_place([
                         [
-                            Conv2DTile(
+                            tile(
                                 arch, conv, [ti, tw], [to], False,
                                 n,
                                 Slice.blk(p, conv.p, 1),
                                 Slice.blk(q, conv.q, 1),
-                                Slice.blk(bc, conv.c, 16),
+                                Slice.blk(bc, conv.c, tile.tc),
                                 Slice.blk(k, conv.k, kblk))
-                            for bc in range(0, conv.c, 16)
+                            for bc in range(0, conv.c, tile.tc)
                         ]
                     ], bbox=(row, col))
 
@@ -187,8 +272,16 @@ def blk_k(dtype : Dtype, k : int):
 
     return kblk_col, kblk_row, kblk_in, kblk_left
 
+@deprecated
 def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
+
+    tile = {
+        (Dtype.I8, False): Conv2DTileI8,
+        (Dtype.I8, True): Conv2DTileI8TW,
+    }[(conv.dtype, conv.tr_w)]
+
+    assert False
 
     kblk_col, kblk_row, kblk_in, kblk_out = blk_k(conv.dtype, conv.k)
     assert kblk_col * kblk_row * kblk_in * kblk_out == conv.k
@@ -212,7 +305,7 @@ def place_conv_pkqk_spatial_t(arch : Arch, conv : Conv2D, sim : M.SimBase):
                         assert conv.k > ki
 
                         sim.flatmap_place([[
-                            Conv2DTile(
+                            tile(
                                 arch, conv.dtype,
                                 conv, ti, tw, to, False, ni,
                                 Slice.blk(p, conv.p, pblk),
@@ -229,29 +322,29 @@ def place_conv2d_flatmap(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
     npixels = conv.n * conv.p * conv.q
 
-    if npixels > arch.ntiles: kblk = 128
-    elif npixels > arch.ntiles // 4: kblk = 64
-    else: kblk = 8
+    tile = {
+        (Dtype.I8, False): Conv2DTileI8,
+        (Dtype.I8, True): Conv2DTileI8TW,
+    }[(conv.dtype, conv.tr_w)]
 
-    qblk = int(max(1, 32 / kblk))
-    # nblk = int(max(1, arch.ncols // conv.n))
+
     off = 0
 
     for ni in range(0, conv.n):
         off += sim.flatmap_place([
             [
-                Conv2DTile(
+                tile(
                     arch, conv, [ti, tw], [to], False,
                     ni,
-                    Slice.blk(bp, conv.p, 1),
-                    Slice.blk(bq, conv.q, qblk),
-                    Slice.blk(bc, conv.c, 16),
-                    Slice.blk(bk, conv.k, kblk))
-                for bc in range(0, conv.c, 16)
+                    Slice.blk(bp, conv.p, tile.tp),
+                    Slice.blk(bq, conv.q, tile.tq),
+                    Slice.blk(bc, conv.c, tile.tc),
+                    Slice.blk(bk, conv.k, tile.tk))
+                for bc in range(0, conv.c, tile.tc)
             ]
-            for bp in range(0, conv.p, 1)
-            for bq in range(0, conv.q, qblk)
-            for bk in range(0, conv.k, kblk)
+            for bp in range(0, conv.p, tile.tp)
+            for bq in range(0, conv.q, tile.tq)
+            for bk in range(0, conv.k, tile.tk)
         ], offset=off, bbox=None, randomize=False)
 
 @M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv2D)
