@@ -83,9 +83,10 @@ def make_arch(arch_name, noc_ports):
         line_size=32,
         l1_capacity=64 * 1024,
         l1_assoc=8,
+        l1_rports=2,
         group='4,8',
         mapping='affine',
-        perfect_compute=True)
+        perfect_compute=False)
     return U.arch.arch_factory(arch_name, **arch_kwargs)
 
 def make_workload(args):
@@ -104,7 +105,7 @@ def print_results(args, app_name, scenario, arch, noc_ports, results):
 
     layers = [
         results[(arch, op)]
-        for op in trace.unique_ops
+        for op in trace.oplist
     ]
 
     cycles = sum(result.cycles for result in layers)
@@ -116,7 +117,7 @@ def print_results(args, app_name, scenario, arch, noc_ports, results):
 
 infer_apps = [
     (app, scenario, arch_name, nocports)
-    for app in ['resnet50', 'bert-large-squad', 'ssdrn34-1200', 'rnnt']
+    for app in ['resnet50'] #, 'bert-large-squad', 'ssdrn34-1200', 'rnnt']
     for arch_name in ['oracle', 'bg']
     for nocports in [1, 2]
     for scenario in ['online', 'offline']

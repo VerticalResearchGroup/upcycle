@@ -122,7 +122,7 @@ class MatmulTileMKKNFP16(MatmulTile):
     tm = 16
     tn = 4
     tk = 32
-    ttk = 4
+    ttk = 2
 
     def __post_init__(self):
         assert self.op.dtype == Dtype.FP16
@@ -229,7 +229,7 @@ class MatmulTileMKNKFP16(MatmulTile):
                         nss, self.op.n,
                         transpose=True)
 
-                    exec_cyc += len(nss) * cld(len(kss), 4)
+                    exec_cyc += len(nss) * cld(len(kss), 2)
 
         return max(num_loads / self.arch.l1_rports, exec_cyc)
 

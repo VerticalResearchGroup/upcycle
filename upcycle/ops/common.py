@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 backward_map = {}
 
-def register_backward(for_class):
+def register_backward(for_class, weight_update=False):
     def decorator(x):
         global backward_map
         if for_class not in backward_map:
