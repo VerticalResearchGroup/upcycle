@@ -87,6 +87,12 @@ class Slice:
         for i in range(self.start, self.stop, self.step):
             yield i // self.step, i, min(i + self.step, self.stop)
 
+    def __repr__(self):
+        if self.step > 1:
+            return f'{self.start}:{self.stop}:{self.step}'
+        else:
+            return f'{self.start}:{self.stop}'
+
 def blkdiv(n, b):
     """Divide n into b blocks of equal size.
 

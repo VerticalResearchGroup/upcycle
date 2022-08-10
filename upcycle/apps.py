@@ -51,7 +51,7 @@ class Trace:
                 self.oplist[i] = ops.Conv2D(
                     op.dtype, op.train,
                     op.n, op.h, op.w, op.c, op.p, op.q, op.k, op.r, op.s,
-                    op.stride, op.pad, True)
+                    op.stride, op.pad, False)
 
             elif type(op) is ops.Lstm:
                 self.oplist[i] = ops.Lstm(
@@ -310,6 +310,12 @@ def unet3d(dtype, n=1):
         ops.Conv3D(dtype, True, n, 128, 128, 128, 32, 128, 128, 128, 32, 3, 3, 3, 1, 1, False),
         ops.Conv3D(dtype, True, n, 128, 128, 128, 32, 128, 128, 128, 3, 1, 1, 1, 1, 0, False),
     ])
+
+# N.B. The official Kits19 dataset for unet runs many forward passes per sample,
+# averaging 1544696 fwds / 24612 samples = ~63 fwd passes / sample. Here we
+# still use one forward pass as the unit of measurement, and scale NVIDIA's
+# reported throughput by this factor.
+kits19_patches_per_sample = 1544696 / 24612
 
 def rnnt_infer(dtype, n, il=239, ol=120):
     return Trace(([

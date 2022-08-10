@@ -72,6 +72,9 @@ class Tensor:
     shape : tuple
     strides : tuple = None
 
+    def __repr__(self):
+        return f'Tensor[{self.oid}][{self.dtype}]({self.shape})'
+
     def __post_init__(self):
         # N.B. frozen dataclasses will yell at us if we assign attributes willy-
         # nilly. We use object.__setattr__ to bypass that. The strides are pre-
@@ -337,6 +340,11 @@ class Sim(SimBase):
             if step not in self.dest_maps:
                 self.dest_maps[step] = c_model.DestList()
 
+            # if logger.isEnabledFor(logging.DEBUG):
+            if wi.perfect_exec_lat > wi.exec_lat:
+                logger.error(f'Perfect exec lat > exec lat! {wi.perfect_exec_lat} > {wi.exec_lat} ({wi.flops} ops)')
+                logger.error(f'{wi}')
+
             exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
 
             self.log_exec_cycles(step, tid, exec_lat)
@@ -424,7 +432,8 @@ def common_sim(
         total_traffic += traffic
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'Step {step + 1}/{sim.nsteps}: Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
+            cores_used = np.count_nonzero(sim.exec_cycles[step])
+            logger.debug(f'Step {step + 1}/{sim.nsteps}: Cores used: {cores_used}, Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
 
         # Update compute_cyc after this line because compute is one time-step
         # behind prefetch.

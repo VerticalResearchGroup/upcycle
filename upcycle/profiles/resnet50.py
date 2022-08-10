@@ -19,15 +19,4 @@ logger = logging.getLogger(__name__)
 
 
 
-@ops.placement_profile(
-    [BgroupArch, FbcastArch], # Apparently this doesn't actually improve perf. for oracle.
-    ops.Conv2D(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
-def place_conv_1x1(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
-    # We observe in this case the convolution degenerates into a large matmul.
-    mm = ops.Matmul(
-        conv.dtype, conv.train, 1, conv.n * conv.p * conv.q, conv.k, conv.c,
-        False, not conv.tr_w)
-
-    assert mm.flops == conv.flops
-    return M.place_op('pg', arch, mm, sim, False)
 

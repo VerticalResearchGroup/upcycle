@@ -241,8 +241,8 @@ class MatmulTileMKNKFP16(MatmulTile):
 @dataclass(frozen=True)
 class MatmulTileKMKNFP16(MatmulTile):
     tm = 16
-    tn = 4
-    tk = 4
+    tn = 1
+    tk = 2
     ttk = 1
 
     def __post_init__(self):

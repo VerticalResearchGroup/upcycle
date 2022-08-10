@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from .common import *
 
+from . import apps
+
 # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf
 a100_peak = {
     Dtype.I8: 624e12,
@@ -95,8 +97,8 @@ a100_perf = {
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/configs/3d-unet/Offline/__init__.py
     'unet': NvidiaAppStats(
         infer_dtype=Dtype.I8,
-        infer_online_perf=2.98,
-        infer_offline_perf=2.99, infer_offline_bs=1,
+        infer_online_perf=2.98 * apps.kits19_patches_per_sample,
+        infer_offline_perf=2.99 * apps.kits19_patches_per_sample, infer_offline_bs=1,
         train_dtype=Dtype.FP16,
         train_large_perf=283/8, train_large_bs=56/8,
         train_small_perf=None, train_small_bs=None),
