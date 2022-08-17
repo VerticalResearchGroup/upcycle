@@ -12,7 +12,8 @@ from .. import noc
 
 logger = logging.getLogger(__name__)
 
-def simulate_fbcast_noc(arch : FbcastArch, kwstats : dict, dest_map : dict):
+def simulate_fbcast_noc(arch : FbcastArch, kwstats : dict, step : int, sim : SimBase):
+    dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
     max_dests = arch.max_dests

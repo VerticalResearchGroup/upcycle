@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import functools
 from enum import IntEnum
 import logging
 
@@ -16,6 +17,7 @@ class NocDir(IntEnum):
     EJECT = 5
     DIRMAX = 6
 
+@functools.singledispatch
 def zero_traffic(arch : Arch):
     return np.zeros((arch.nrows, arch.ncols, NocDir.DIRMAX), dtype=np.uint32)
 

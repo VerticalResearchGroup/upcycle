@@ -32,6 +32,27 @@ def deprecated(func):
         return func(*args, **kwargs)
     return wrapper
 
+def blkdiv(n, b):
+    """Divide n into b blocks of equal size.
+
+    If n is not divisible by b, some blocks will be smaller by 1.
+    """
+    nn = n // b
+    for i in range(b):
+        r = nn + (1 if i < n % b else 0)
+        yield r
+
+def blkdivn(n, b):
+    """Divide n into b blocks of equal size.
+
+    If n is not divisible by b, some blocks will be smaller by 1.
+    """
+    nn = n // b
+    nfull = n % b
+    nunderfull = b - nfull
+    return nfull, nn + 1, nunderfull, nn
+
+
 @dataclass(frozen=True, order=True)
 class Slice:
     """A custom slice object.
@@ -82,6 +103,14 @@ class Slice:
         for i in range(self.start, self.stop, chunksize):
             yield Slice(i, min(self.stop, i + chunksize), 1)
 
+    def blkslice(self, nblks):
+        i = self.start
+        for n in blkdiv(len(self), nblks):
+            yield Slice(i, i + n, 1)
+            i += n
+
+        assert i == self.stop
+
     @property
     def blocks(self):
         for i in range(self.start, self.stop, self.step):
@@ -93,15 +122,6 @@ class Slice:
         else:
             return f'{self.start}:{self.stop}'
 
-def blkdiv(n, b):
-    """Divide n into b blocks of equal size.
-
-    If n is not divisible by b, some blocks will be smaller by 1.
-    """
-    nn = n // b
-    for i in range(b):
-        r = nn + (1 if i < n % b else 0)
-        yield r
 
 def cld(n : int, d : int):
     """Ceiling-divide."""

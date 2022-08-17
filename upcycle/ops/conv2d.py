@@ -111,7 +111,7 @@ class Conv2DTile(M.WorkItem):
                             num_loads += self.nloads_b(kss, qss)
                             exec_cyc += len(qss) * cld(len(css), rstride)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
 @dataclass(frozen=True)
 class Conv2DTileI8(Conv2DTile):
@@ -187,7 +187,6 @@ class Conv2DTileI8TW(Conv2DTile):
             transpose=True,
             contig=self.op.stride == 1)
 
-
 @dataclass(frozen=True)
 class Conv2DTileFP16TW(Conv2DTile):
     tk = 16 # M
@@ -216,7 +215,6 @@ class Conv2DTileFP16TW(Conv2DTile):
             transpose=True,
             contig=self.op.stride == 1)
 
-
 def make_conv2d_tensors(arch : Arch, conv : Conv2D):
     ti = M.Tensor(
         arch,
@@ -234,6 +232,7 @@ def make_conv2d_tensors(arch : Arch, conv : Conv2D):
     to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
     return ti, tw, to
 
+@deprecated
 def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
 
@@ -269,10 +268,9 @@ def place_conv_pq_spatial(arch : Arch, conv : Conv2D, sim : M.SimBase):
                         ]
                     ], bbox=(row, row + 1, col, col + 1))
 
-@M.register_placement('default', [OracleArch, BgroupArch, FbcastArch], Conv2D)
+@M.register_placement('default', [OracleArch, BgroupArch, FbcastArch, HierArch], Conv2D)
 def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
     ti, tw, to = make_conv2d_tensors(arch, conv)
-    npixels = conv.n * conv.p * conv.q
 
     tile = {
         (Dtype.I8, False): Conv2DTileI8,
@@ -281,31 +279,25 @@ def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
         (Dtype.FP16, True): Conv2DTileFP16TW,
     }[(conv.dtype, conv.tr_w)]
 
-    off = 0
+    sim.flatmap_place([
+        [
+            tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bc1, bk0)
+            for bc1 in bc0.subslice(tile.tc)
+        ]
+        for ni in Slice(0, conv.n).indices
+        for bp0 in Slice(0, conv.p).subslice(tile.tp)
+        for bq0 in Slice(0, conv.q).subslice(tile.tq)
+        for bk0 in Slice(0, conv.k).subslice(tile.tk)
+        for bc0 in Slice(0, conv.c).blkslice(1)
+    ])
 
-    for ni in range(0, conv.n):
-        off += sim.flatmap_place([
-            [
-                tile(
-                    arch, conv, [ti, tw], [to], False,
-                    ni,
-                    Slice.blk(bp, conv.p, tile.tp),
-                    Slice.blk(bq, conv.q, tile.tq),
-                    Slice.blk(bc, conv.c, tile.tc),
-                    Slice.blk(bk, conv.k, tile.tk))
-                for bc in range(0, conv.c, tile.tc)
-            ]
-            for bp in range(0, conv.p, tile.tp)
-            for bq in range(0, conv.q, tile.tq)
-            for bk in range(0, conv.k, tile.tk)
-        ], offset=off, bbox=None, randomize=False)
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv2D)
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch], Conv2D)
 def place_conv2d_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv2d_default)
 
 @placement_profile(
-    [OracleArch, BgroupArch, FbcastArch],
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
     Conv2D(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
 def place_conv_1x1(arch : Arch, conv : Conv2D, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
@@ -430,10 +422,10 @@ class Conv2DDiTile(M.WorkItem):
             _num_loads, _exec_cyc = self._small_gemm(n)
             num_loads += _num_loads
             exec_cyc += _exec_cyc
-        lat = max(num_loads / self.arch.l1_rports, exec_cyc)
+        lat = max(num_loads / self.arch.l1.rports, exec_cyc)
         return lat
 
-@M.register_placement('default', [OracleArch, BgroupArch, FbcastArch], Conv2DDi)
+@M.register_placement('default', [OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDi)
 def place_conv2d_di_default(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     tdi, tw, tdo = make_conv2d_tensors(arch, conv)
 
@@ -463,13 +455,13 @@ def place_conv2d_di_default(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
 
 
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv2DDi)
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDi)
 def place_conv2ddi_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):
     return profiled_placement(arch, conv, sim, place_conv2d_di_default)
 
 
 @placement_profile(
-    [OracleArch, BgroupArch, FbcastArch],
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
     Conv2DDi(None, None, None, None, None, None, None, None, None, None, None, 1, None, None))
 def place_convdi_stride1(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     # N.B. Based on the 2018 paper from Intel, when stride=1, we can reuse the

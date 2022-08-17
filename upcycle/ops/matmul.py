@@ -110,7 +110,7 @@ class MatmulTileMKKNI8(MatmulTile):
                         # m and n slice sizes.
                         exec_cyc += len(nss)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -150,7 +150,7 @@ class MatmulTileMKKNFP16(MatmulTile):
                         # m and n slice sizes.
                         exec_cyc += len(nss)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -190,7 +190,7 @@ class MatmulTileMKNKI8(MatmulTile):
 
                     exec_cyc += len(nss) * cld(len(kss), 4)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -231,7 +231,7 @@ class MatmulTileMKNKFP16(MatmulTile):
 
                     exec_cyc += len(nss) * cld(len(kss), 2)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -275,7 +275,7 @@ class MatmulTileKMKNFP16(MatmulTile):
                         # m and n slice sizes.
                         exec_cyc += len(nss)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -323,7 +323,7 @@ class MatmulTileKMNKFP16(MatmulTile):
                         # m and n slice sizes.
                         exec_cyc += len(nss)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
     @property
     def read_trace(self):
@@ -340,22 +340,20 @@ def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None
         (True, True, Dtype.FP16): MatmulTileKMNKFP16,
     }[(mm.tr_a, mm.tr_b, mm.dtype)]
 
-    return sim.flatmap_place([
+    sim.flatmap_place([
         [
-            tile(
-                arch, mm, [a, b], [c], False,
-                li,
-                Slice.blk(bm, mm.m, tile.tm),
-                Slice.blk(bn, mm.n, tile.tn),
-                Slice.blk(bk, mm.k, tile.tk))
-            for bk in range(0, mm.k, tile.tk)
+            tile(arch, mm, [a, b], [c], False, li, bm1, bn1, bk1)
+            for bm1 in bm0.subslice(tile.tm * 2)
+            for bk1 in bk0.subslice(tile.tk * 2)
+            for bn1 in bn0.subslice(tile.tn * 2)
         ]
-        for bm in range(0, mm.m, tile.tm)
-        for bn in range(0, mm.n, tile.tn)
-        for li in range(mm.l)
-    ], offset=offset, bbox=bbox)
+        for bm0 in Slice(0, mm.m).blkslice(64)
+        for bn0 in Slice(0, mm.n).blkslice(32)
+        for bk0 in Slice(0, mm.k).blkslice(1)
+        for li in Slice(0, mm.l).indices
+    ])
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], [Matmul, Linear])
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch, HierArch], [Matmul, Linear])
 def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -369,11 +367,11 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     flatmap_matmul(arch, mm, sim, a, b, c)
 
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], [Matmul, Linear])
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch], [Matmul, Linear])
 def place_matmul_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
     return profiled_placement(arch, mm, sim, place_matmul_flatmap)
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], [MatmulBwd, LinearBwd])
+@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch, HierArch], [MatmulBwd, LinearBwd])
 def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -390,6 +388,6 @@ def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     off = flatmap_matmul(arch, mm.da, sim, dc, b, da)
     flatmap_matmul(arch, mm.db, sim, a, dc, db, offset=off)
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], [MatmulBwd, LinearBwd])
+@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch], [MatmulBwd, LinearBwd])
 def place_matmul_bwd_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
     return profiled_placement(arch, mm, sim, place_matmul_bwd_flatmap)

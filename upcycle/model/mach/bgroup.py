@@ -42,7 +42,8 @@ class BgroupNoc(noc.Noc):
         return gr * self.arch.grows + off_r, gc * self.arch.gcols + off_c
 
 
-def simulate_bgroup_noc(arch : Arch, kwstats : dict, dest_map : dict):
+def simulate_bgroup_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
+    dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
     net = BgroupNoc.from_arch(arch)
     sum_dests = 0

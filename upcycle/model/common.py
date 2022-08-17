@@ -261,21 +261,19 @@ class SimBase:
     def place_work(self, tid, wl : list[WorkItem]): raise NotImplementedError()
 
     def flatmap_place(self, vtiles : list[list[WorkItem]], offset=0, bbox=None, randomize=False):
-        if bbox is None: bbox = (0, self.arch.nrows, 0, self.arch.ncols)
         if randomize: shuffle(vtiles)
-        if len(bbox) == 2: bbox = (bbox[0], bbox[0] + 1, bbox[1], bbox[1] + 1)
 
-        bbox_nrows = bbox[1] - bbox[0]
-        bbox_ncols = bbox[3] - bbox[2]
-        bbox_ntiles = bbox_nrows * bbox_ncols
+        logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
 
-        for vtid, vtile in enumerate(vtiles):
-            ltid = (vtid + offset) % bbox_ntiles
-            lr, lc = (ltid // bbox_ncols), (ltid % bbox_ncols)
-            r, c = bbox[0] + lr, bbox[2] + lc
-            tid = r * self.arch.ncols + c
-            self.place_work(tid, vtile)
+        if bbox is not None:
+            logger.warning('Use of bbox is deprecated.')
 
+        i = 0
+        for tid, n in enumerate(blkdiv(len(vtiles), self.arch.ntiles)):
+            for vtile in vtiles[i : i + n]:
+                self.place_work(tid, vtile)
+
+            i += n
         return len(vtiles)
 
 def place_op(mode : str, arch : Arch, op : Operator, sim : SimBase, check_flops=True):
@@ -312,8 +310,11 @@ class Sim(SimBase):
         self.flops = 0
         self.cur_step = [0 for _ in range(arch.ntiles)]
         self.l1 = [
-            [c_model.Cache(arch.l1_nset, arch.l1_assoc, arch.lbits) for _ in range(arch.ncols)]
-            for _ in range(arch.nrows)
+            c_model.Cache(
+                arch.l1.nset(arch.line_size),
+                arch.l1.assoc,
+                arch.l1.lbits(arch.line_size))
+            for _ in range(arch.ntiles)
         ]
 
     def log_exec_cycles(self, step, tid, ncycles):
@@ -328,13 +329,11 @@ class Sim(SimBase):
 
     def place_work(self, tid, wl : list[WorkItem]):
         global USE_C_TRACE
-        r, c = self.arch.tile_coords(tid)
         tile_cur_step = self.cur_step[tid]
         self.cur_step[tid] += len(wl)
 
-
         for i, wi in enumerate(wl):
-            self.l1[r][c].reset()
+            self.l1[tid].reset()
             step = tile_cur_step + i
 
             if step not in self.dest_maps:
@@ -353,31 +352,32 @@ class Sim(SimBase):
             if USE_C_TRACE:
                 for tile in wi.read_trace:
                     c_model.tile_read_trace(
-                        self.l1[r][c],
+                        self.l1[tid],
                         self.dest_maps[step],
                         tile,
                         tid)
 
             else:
                 for l in wi.read_trace:
-                    if self.l1[r][c].lookup(l):
-                        self.l1[r][c].insert(l)
+                    if self.l1[tid].lookup(l):
+                        self.l1[tid].insert(l)
                         continue
-                    self.l1[r][c].insert(l)
+                    self.l1[tid].insert(l)
                     self.log_read(step, tid, l)
 
-            self.rss[tid].append(self.l1[r][c].get_accesses() * self.arch.line_size)
-            self.l1_accesses += self.l1[r][c].get_accesses()
-            self.l1_hits += self.l1[r][c].get_hits()
+            self.rss[tid].append(self.l1[tid].get_accesses() * self.arch.line_size)
+            self.l1_accesses += self.l1[tid].get_accesses()
+            self.l1_hits += self.l1[tid].get_hits()
 
     @property
     def nsteps(self): return max(self.cur_step)
 
 
-def simulate_noc(arch : Arch, dest_map : dict, addr_llc_coords : Callable):
+def simulate_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
     """Default NoC simulator."""
     raise NotImplementedError()
 
+@functools.singledispatch
 def num_steps(
     arch : Arch,
     op : Operator,
@@ -396,6 +396,7 @@ def num_steps(
 def common_sim(
     arch : Arch,
     op : Operator,
+    ex_sim_cls = Sim,
     noc_sim_func : Callable = simulate_noc,
     placement_mode : str = 'naive',
     counter : multiprocessing.Value = None,
@@ -407,7 +408,7 @@ def common_sim(
     reason to write a custom sim function for a particular architecture in the
     future if there are some wacky features we want to model.
     """
-    sim = Sim(arch)
+    sim = ex_sim_cls(arch)
     kwstats = {}
 
     # place_op will call the placement function for the given operator an
@@ -425,9 +426,8 @@ def common_sim(
     # Main simulator loop. By now we've already done all the core modeling, so
     # we just need to simulate the traffic for each step.
     for step in range(nsteps):
-        dest_map = sim.dest_maps.get(step, None)
         max_exec_cyc = max(sim.exec_cycles[step])
-        traffic = noc_sim_func(arch, kwstats, dest_map)
+        traffic = noc_sim_func(arch, kwstats, step, sim)
         net_latency = np.max(traffic) / arch.noc_ports_per_dir
         total_traffic += traffic
 

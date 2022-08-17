@@ -107,7 +107,7 @@ class Conv3DTile(M.WorkItem):
                                 num_loads += self.nloads_b(kss, oss)
                                 exec_cyc += len(oss) * cld(len(css), rstride)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
 @dataclass(frozen=True)
 class Conv3DTileI8(Conv3DTile):
@@ -233,7 +233,7 @@ class Conv3DTileFP16TW(Conv3DTile):
 
                                 exec_cyc += len(oss) * cld(len(css), 2)
 
-        return max(num_loads / self.arch.l1_rports, exec_cyc)
+        return max(num_loads / self.arch.l1.rports, exec_cyc)
 
 
 def make_conv3d_tensors(arch : Arch, conv : Conv3D):
@@ -264,26 +264,18 @@ def place_conv3d_default(arch : Arch, conv : Conv3D, sim : M.SimBase):
         (Dtype.FP16, True): Conv3DTileFP16TW,
     }[(conv.dtype, conv.tr_w)]
 
-    off = 0
-
-    for ni in range(0, conv.n):
-        off += sim.flatmap_place([
-            [
-                tile(
-                    arch, conv, [ti, tw], [to], False,
-                    ni,
-                    Slice.blk(bp, conv.p, tile.tp),
-                    Slice.blk(bq, conv.q, tile.tq),
-                    Slice.blk(bo, conv.o, tile.to),
-                    Slice.blk(bc, conv.c, tile.tc),
-                    Slice.blk(bk, conv.k, tile.tk))
-                for bc in range(0, conv.c, tile.tc)
-            ]
-            for bp in range(0, conv.p, tile.tp)
-            for bq in range(0, conv.q, tile.tq)
-            for bo in range(0, conv.o, tile.to)
-            for bk in range(0, conv.k, tile.tk)
-        ], offset=off, bbox=None, randomize=False)
+    sim.flatmap_place([
+        [
+            tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bo0, bc1, bk0)
+            for bc1 in bc0.subslice(tile.tc)
+        ]
+        for ni in Slice(0, conv.n).indices
+        for bp0 in Slice(0, conv.p).subslice(tile.tp)
+        for bq0 in Slice(0, conv.q).subslice(tile.tq)
+        for bo0 in Slice(0, conv.o).subslice(tile.to)
+        for bk0 in Slice(0, conv.k).subslice(tile.tk)
+        for bc0 in Slice(0, conv.c).blkslice(1)
+    ])
 
 @M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv3D)
 def place_conv3d_profiled(arch : Arch, conv : Conv3D, sim : M.SimBase):

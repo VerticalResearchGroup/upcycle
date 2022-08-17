@@ -12,7 +12,8 @@ from .. import noc
 
 logger = logging.getLogger(__name__)
 
-def simulate_oracle_noc(arch : Arch, kwstats : dict, dest_map : dict):
+def simulate_oracle_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
+    dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
 
@@ -48,7 +49,7 @@ def simulate_oracle_noc2(arch : Arch, kwstats : dict, dl : c_model.DestList):
     traffic = np.zeros((arch.nrows, arch.ncols, noc.NocDir.DIRMAX), dtype=np.uint64)
 
     if dl is not None:
-        c_model.oracle_traffic(arch.lbits, arch.nrows, arch.ncols, dl, traffic)
+        c_model.oracle_traffic(arch.l1.lbits((arch.line_size)), arch.nrows, arch.ncols, dl, traffic)
 
     t1 = time.perf_counter()
 
