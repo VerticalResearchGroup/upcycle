@@ -5,6 +5,8 @@ import logging
 from ..common import *
 from .common import *
 
+from . import matmul
+
 logger = logging.getLogger(__name__)
 
 @operator
@@ -32,6 +34,13 @@ class Conv3D(Operator):
     @property
     def flops(self):
         return self.n * self.p * self.q * self.o * self.k * self.r * self.s * self.t * self.c * 2
+
+    @property
+    def total_load_bytes(self):
+        return (
+            self.n * self.h * self.w * self.d * self.c +
+            self.r * self.s * self.t * self.k * self.c) * \
+            Dtype.sizeof(self.dtype)
 
 @operator
 @dataclass(frozen=True)
@@ -158,7 +167,6 @@ class Conv3DTileFP16(Conv3DTile):
             transpose=True,
             contig=self.op.stride == 1)
 
-
 @dataclass(frozen=True)
 class Conv3DTileI8TW(Conv3DTile):
     tk = 16 # M
@@ -201,40 +209,21 @@ class Conv3DTileFP16TW(Conv3DTile):
         assert self.op.tr_w
 
     def nloads_a(self, css, kss):
-        return M.nloads()
+        return M.nloads(
+            self.arch,
+            Dtype.I8,
+            kss, self.op.k,
+            css, self.op.c,
+            transpose=True)
 
     def nloads_b(self, kss, oss):
-        return M.nloads()
-
-    @property
-    def exec_lat(self):
-        num_loads = 0
-        exec_cyc = 0
-        for _ in self.ps.subslice(self.tp):
-            for _ in self.qs.subslice(self.tq):
-                for oss in self.os.subslice(self.to):
-                    for br in range(self.op.r * self.op.s * self.op.t):
-                        for kss in self.ks.subslice(self.tk):
-                            for css in self.cs.subslice(self.tc):
-                                num_loads += M.nloads(
-                                    self.arch,
-                                    Dtype.I8,
-                                    kss, self.op.k,
-                                    css, self.op.c,
-                                    transpose=True)
-
-                                num_loads += M.nloads(
-                                    self.arch,
-                                    Dtype.I8,
-                                    kss, self.op.k,
-                                    oss, self.op.o,
-                                    transpose=True,
-                                    contig=self.op.stride == 1)
-
-                                exec_cyc += len(oss) * cld(len(css), 2)
-
-        return max(num_loads / self.arch.l1.rports, exec_cyc)
-
+        return M.nloads(
+            self.arch,
+            Dtype.I8,
+            kss, self.op.k,
+            oss, self.op.o,
+            transpose=True,
+            contig=self.op.stride == 1)
 
 def make_conv3d_tensors(arch : Arch, conv : Conv3D):
     ti = M.Tensor(
@@ -253,7 +242,7 @@ def make_conv3d_tensors(arch : Arch, conv : Conv3D):
     to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.o, conv.k))
     return ti, tw, to
 
-@M.register_placement('default', [OracleArch, BgroupArch, FbcastArch], Conv3D)
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv3D)
 def place_conv3d_default(arch : Arch, conv : Conv3D, sim : M.SimBase):
     ti, tw, to = make_conv3d_tensors(arch, conv)
 
@@ -277,6 +266,14 @@ def place_conv3d_default(arch : Arch, conv : Conv3D, sim : M.SimBase):
         for bc0 in Slice(0, conv.c).blkslice(1)
     ])
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], Conv3D)
-def place_conv3d_profiled(arch : Arch, conv : Conv3D, sim : M.SimBase):
-    return profiled_placement(arch, conv, sim, place_conv3d_default)
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    Conv3D(None, None, None, None, None, None, None, None, None, None, None, 1, 1, 1, None, None, None))
+def place_conv_1x1(arch : Arch, conv : Conv3D, sim : M.SimBase):
+    # We observe in this case the convolution degenerates into a large matmul.
+    mm = matmul.Matmul(
+        conv.dtype, conv.train, 1, conv.n * conv.p * conv.q * conv.o, conv.k, conv.c,
+        False, not conv.tr_w)
+
+    assert mm.flops == conv.flops
+    return M.place_op(arch, mm, sim, False)

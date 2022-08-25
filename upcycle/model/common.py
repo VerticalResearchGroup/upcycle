@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from random import shuffle
 from typing import Callable, Iterator
 import multiprocessing
@@ -165,8 +165,15 @@ class WorkItem:
     @property
     def perfect_exec_lat(self): return self.flops / self.arch.peak_opc(self.op.dtype)
 
+    exec_warn = set()
+
     @property
-    def exec_lat(self): return self.perfect_exec_lat
+    def exec_lat(self):
+        if type(self) not in self.exec_warn:
+            logger.warn(f'exec_lat not implemented for {type(self)}. Falling back to perfect_exec_lat.')
+            self.exec_warn.add(type(self))
+
+        return self.perfect_exec_lat
 
     @property
     def read_trace(self)  -> Iterator[int]: raise NotImplementedError()
@@ -190,24 +197,64 @@ class WorkItem:
 
 placement_funcs = {}
 
-def register_placement_single(mode, archclass, opclass, f):
-    placement_funcs[(mode, archclass, opclass)] = f
+def register_placement_single(archclass, opclass_or_spec, f):
+    if type(opclass_or_spec) is type:
+        opclass = opclass_or_spec
+        opspec = None
+    else:
+        opclass = type(opclass_or_spec)
+        opspec = opclass_or_spec
 
-def register_placement(mode_s, archclass_s, opclass_s):
-    if not isinstance(mode_s, list):
-        mode_s = [mode_s]
+    if (archclass, opclass) not in placement_funcs:
+        placement_funcs[(archclass, opclass)] = []
+    placement_funcs[(archclass, opclass)].append((opspec, f))
+
+def register_placement(archclass_s, opclass_or_specs):
     if not isinstance(archclass_s, list):
         archclass_s = [archclass_s]
-    if not isinstance(opclass_s, list):
-        opclass_s = [opclass_s]
+    if not isinstance(opclass_or_specs, list):
+        opclass_or_specs = [opclass_or_specs]
 
     def decorator(f):
-        for mode in mode_s:
-            for archclass in archclass_s:
-                for opclass in opclass_s:
-                    register_placement_single(mode, archclass, opclass, f)
+        for archclass in archclass_s:
+            for opclass_or_spec in opclass_or_specs:
+                register_placement_single(archclass, opclass_or_spec, f)
         return f
     return decorator
+
+def choose_placement_func(arch : Arch, op : Operator):
+    global placement_funcs
+    key = (type(arch), type(op))
+    if key not in placement_funcs:
+        raise KeyError(f'No placement funcs for {key}')
+
+    best_score, best_func = -1, None
+
+    logger.debug(f'Looking for placement profile for {op}')
+    for prof, f in placement_funcs[key]:
+        if prof is None: valid, score = True, 0
+        else: valid, score = prof.match(op)
+
+        logger.debug(f'    + {prof} valid={valid} score={score} (best={best_score})')
+
+        if valid and (score > best_score):
+            best_score = score
+            best_func = f
+
+    if best_func is None:
+        raise KeyError(f'No valid placement func for {key}')
+
+    return best_func, best_score
+
+def place_op(arch : Arch, op : Operator, sim, check_flops=True):
+    logger.debug(f'place_op: {arch} {op}')
+    func, score = choose_placement_func(arch, op)
+    logger.debug(f'Chosen placement function: {op} -> {func.__name__} (score = {score})')
+    func(arch, op, sim)
+
+    if check_flops and op.flops != sim.flops:
+        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+
 
 @dataclass(frozen=True)
 class SimResult:
@@ -291,13 +338,6 @@ class SimBase:
             vrow += m
 
         return trows * tcols
-
-def place_op(mode : str, arch : Arch, op : Operator, sim : SimBase, check_flops=True):
-    global placement_funcs
-    logger.debug(f'place_op(mode={mode}): {arch} {op}')
-    placement_funcs[(mode, type(arch), type(op))](arch, op, sim)
-    if check_flops and op.flops != sim.flops:
-        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
 
 class StepCounter(SimBase):
     """Dummy sim object used to count number of steps for a layer.
@@ -397,7 +437,6 @@ def simulate_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
 def num_steps(
     arch : Arch,
     op : Operator,
-    placement_mode : str = 'naive',
     **kwargs
 ):
     """Count the number of steps needed to execute an operator.
@@ -406,7 +445,7 @@ def num_steps(
     reporting purposes. It serves no functional purpose.
     """
     sim = StepCounter(arch)
-    place_op(placement_mode, arch, op, sim, check_flops=False)
+    place_op(arch, op, sim, check_flops=False)
     return sim.nsteps
 
 def common_sim(
@@ -414,7 +453,6 @@ def common_sim(
     op : Operator,
     ex_sim_cls = Sim,
     noc_sim_func : Callable = simulate_noc,
-    placement_mode : str = 'naive',
     counter : multiprocessing.Value = None,
     lock : multiprocessing.Lock = None,
 ):
@@ -429,7 +467,7 @@ def common_sim(
 
     # place_op will call the placement function for the given operator an
     # collect step-wise information such as the read trace.
-    place_op(placement_mode, arch, op, sim)
+    place_op(arch, op, sim)
 
     logger.debug(f'Simulating {sim.nsteps} steps with {sim.flops} flops...')
     total_traffic = noc.zero_traffic(arch)

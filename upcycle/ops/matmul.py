@@ -19,6 +19,11 @@ class Matmul(Operator):
     @property
     def flops(self): return self.l * self.m * self.n * self.k * 2
 
+    @property
+    def total_load_bytes(self):
+        return (self.l * self.m * self.k + self.l * self.n * self.k) * \
+            Dtype.sizeof(self.dtype)
+
 @operator
 @dataclass(frozen=True)
 @register_backward(Matmul)
@@ -353,7 +358,9 @@ def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None
         for li in Slice(0, mm.l).indices
     ])
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle], [Matmul, Linear])
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    [Matmul, Linear])
 def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -366,12 +373,9 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
 
     flatmap_matmul(arch, mm, sim, a, b, c)
 
-
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle], [Matmul, Linear])
-def place_matmul_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
-    return profiled_placement(arch, mm, sim, place_matmul_flatmap)
-
-@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle], [MatmulBwd, LinearBwd])
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    [MatmulBwd, LinearBwd])
 def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -388,6 +392,3 @@ def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
     off = flatmap_matmul(arch, mm.da, sim, dc, b, da)
     flatmap_matmul(arch, mm.db, sim, a, dc, db, offset=off)
 
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle], [MatmulBwd, LinearBwd])
-def place_matmul_bwd_profiled(arch : Arch, mm : Matmul, sim : M.SimBase):
-    return profiled_placement(arch, mm, sim, place_matmul_bwd_flatmap)

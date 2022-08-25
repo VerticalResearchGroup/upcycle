@@ -68,15 +68,15 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
             logger.info(f'+ (Max) lines transmitted in one step : {np.max(result.kwstats["max_lines"])}')
 
 
-def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
+def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
     layers = []
     cache = {}
-    total_steps = sum(U.model.num_steps(arch, op, **sim_args) for op in app.oplist)
+    total_steps = sum(U.model.num_steps(arch, op) for op in app.oplist)
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()
         if op not in cache:
-            result = simulate_layer(arch, op, sim_args)
+            result = simulate_layer(arch, op, {})
             cache[op] = result
             hit = False
         else:
@@ -158,8 +158,7 @@ if __name__ == '__main__':
     logging.info(f'App Ops: {trace.flops / 1e9} G')
     logging.info(f'Arch: {arch}')
 
-    sim_args = dict(placement_mode=args.placement_mode)
-    time_ns, layers = simulate_app(arch, dtype, trace, sim_args, args.verbose)
+    time_ns, layers = simulate_app(arch, dtype, trace, args.verbose)
     cycles = sum(result.cycles for result in layers)
 
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')

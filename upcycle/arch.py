@@ -234,11 +234,11 @@ class HierArch(Arch):
         'mapping': TileMapping.AFFINE,
         'perfect_compute': False,
         'noc_ports_per_dir': 1,
-        'line_size': 64,
+        'line_size': 32,
         'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
         'grows': 4,
-        'gcols': 4,
-        'l2': CacheParams(nbanks=None, capacity=128 * 2**10, assoc=8, rports=1),
+        'gcols': 8,
+        'l2': CacheParams(nbanks=None, capacity=512 * 2**10, assoc=8, rports=1),
     }
 
 

@@ -40,10 +40,11 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     logger.debug(f'Finished {op}')
     return result
 
-def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
-    gops = int(op.flops / result.cycles * arch.freq / 1e9)
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, time_ns=None, details=True):
+    gops = int(op.flops / result.cycles * arch.freq / 1e12)
     eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
-    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {green} {gops} Gops {reset} ({blue}Efficiency: {eff} %{reset})')
+    cyc_frac = np.round(result.cycles / total_cyc * 100, 2)
+    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
 def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
     counter = multiprocessing.Value('i', 0)
@@ -53,12 +54,12 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
         parallel, initializer=init_pool_processes, initargs=(counter, lock))
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
-    total_steps = sum(U.model.num_steps(arch, op, **sim_args) for op in unique_ops)
+    total_steps = sum(U.model.num_steps(arch, op) for op in unique_ops)
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 
     result = pool.map_async(
-        functools.partial(simulate_layer, arch, sim_kwargs=sim_args), unique_ops)
+        functools.partial(simulate_layer, arch, sim_kwargs={}), unique_ops)
 
     last = 0
     while not result.ready():
@@ -73,11 +74,14 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
     cache = {op: result for op, result in zip(unique_ops, unique_results)}
     tt1 = time.perf_counter_ns()
 
+    total_cyc = 0
+    for op in app.oplist: total_cyc += cache[op].cycles
+
     layers = []
     for i, op in enumerate(app.oplist):
         result = cache[op]
         layers.append(result)
-        if verbose: log_layer(arch, dtype, app, i, op, result)
+        if verbose: log_layer(arch, dtype, app, i, op, result, total_cyc)
 
     return tt1 - tt0, layers
 
@@ -97,8 +101,7 @@ if __name__ == '__main__':
     logging.info(f'App Ops: {trace.flops / 1e9} G')
     logging.info(f'Arch: {arch}')
 
-    sim_args = dict(placement_mode=args.placement_mode)
-    time_ns, layers = simulate_app_par(args.parallel, arch, dtype, trace, sim_args, args.verbose)
+    time_ns, layers = simulate_app_par(args.parallel, arch, dtype, trace, args.verbose)
     cycles = sum(result.cycles for result in layers)
 
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')

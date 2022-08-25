@@ -136,7 +136,7 @@ def flatmap_lstm_backend(arch : Arch, lstm : Lstm, sim : M.SimBase, txp, thp, tc
         for bh in range(0, lstm.h, 32)
     ], offset=offset, bbox=bbox)
 
-@M.register_placement('flatmap', [OracleArch, BgroupArch, FbcastArch], [Lstm])
+@M.register_placement([OracleArch, BgroupArch, FbcastArch], [Lstm])
 def place_lstm_flatmap(arch : Arch, lstm : Lstm, sim : M.SimBase):
     logger.debug(f'=== Place LSTM ===')
     logger.debug(f'+ LSTM: {lstm}')
@@ -165,7 +165,3 @@ def place_lstm_flatmap(arch : Arch, lstm : Lstm, sim : M.SimBase):
         off2 += flatmap_lstm_backend(arch, lstm, sim, txp, thp, tc, th, si, offset=off2)
 
     return sim
-
-@M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch], [Lstm])
-def place_lstm_profiled(arch : Arch, lstm : Lstm, sim : M.SimBase):
-    return profiled_placement(arch, lstm, sim, place_lstm_flatmap)

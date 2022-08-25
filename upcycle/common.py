@@ -165,3 +165,9 @@ class Operator:
 
     @property
     def flops(self): raise NotImplementedError()
+
+    @property
+    def total_load_bytes(self): raise NotImplementedError()
+
+    @property
+    def ami(self): return self.flops / self.total_load_bytes
