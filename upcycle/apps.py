@@ -441,12 +441,12 @@ mlperf_v1_apps = {
     'ssdrn34-1200': App(
         ssdrn34_1200, Dtype.I8,
         None, None,
-        BatchSizes(1, 4, None, None)),
+        BatchSizes(1, 2, None, None)),
     'bert-large-squad': App(
         # N.B. 178 reflects the average tokens per query from the SQuAD dataset.
         lambda dtype, n: bertlarge(dtype, n, 178), Dtype.I8,
         None, None,
-        BatchSizes(1, 8, None, None)),
+        BatchSizes(1, 4, None, None)),
     'bert-large-pretrain': App(
         None, None,
         # N.B. The official MLPerf code was run with bert pretraining for a full
@@ -454,11 +454,11 @@ mlperf_v1_apps = {
         # training, there was 39867330529 total tokens -- an average of 254
         # tokens per sample.
         lambda dtype, n: bertlarge(dtype, n, 254), Dtype.FP16,
-        BatchSizes(None, None, 1, 8)),
+        BatchSizes(None, None, 1, 4)),
     'unet': App(
         unet3d, Dtype.I8,
         unet3d, Dtype.FP16,
-        BatchSizes(1, 8, 1, 8)),
+        BatchSizes(1, 2, 1, 2)),
     'rnnt': App(
         # N.B. The official MLPerf inference benchmark uses librespeech dataset
         # which has an average input length of 239, output length of 120.

@@ -265,8 +265,7 @@ class SimBase:
 
         logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
 
-        if bbox is not None:
-            logger.warning('Use of bbox is deprecated.')
+        if bbox is not None: raise DeprecationWarning('bbox is deprecated')
 
         i = 0
         for tid, n in enumerate(blkdiv(len(vtiles), self.arch.ntiles)):
@@ -275,6 +274,23 @@ class SimBase:
 
             i += n
         return len(vtiles)
+
+    def map2d_place(self, vtiles : list[list[list[WorkItem]]]):
+        trows, tcols = len(vtiles), len(vtiles[0])
+
+        vrow = 0
+        for r, m in enumerate(blkdiv(trows, self.arch.nrows)):
+            for tilerow in vtiles[vrow : vrow + m]:
+                vcol = 0
+                for c, n in enumerate(blkdiv(tcols, self.arch.ncols)):
+                    for tile in tilerow[vcol : vcol + n]:
+                        tid = self.arch.coords_tile(r, c)
+                        self.place_work(tid, tile)
+                    vcol += n
+
+            vrow += m
+
+        return trows * tcols
 
 def place_op(mode : str, arch : Arch, op : Operator, sim : SimBase, check_flops=True):
     global placement_funcs

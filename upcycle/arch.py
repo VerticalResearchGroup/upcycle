@@ -59,7 +59,7 @@ class Arch:
     line_size : int = None
     l1 : CacheParams = None
 
-    @property
+    @functools.cached_property
     def vbytes(self): return self.vbits // 8
 
     def __post_init__(self):
@@ -77,11 +77,16 @@ class Arch:
 
         object.__setattr__(self, 'idmap', idmap)
 
-    @property
+        id_backmap = { coords: tid for tid, coords in enumerate(idmap) }
+        object.__setattr__(self, 'id_backmap', id_backmap)
+
+    @functools.cached_property
     def ntiles(self): return self.nrows * self.ncols
 
+    @functools.lru_cache(maxsize=2)
     def vlen(self, dtype : Dtype): return self.vbits / 8 / Dtype.sizeof(dtype)
 
+    @functools.lru_cache(maxsize=2)
     def peak_opc(self, dtype : Dtype):
         return self.vlen(dtype) * self.macs * 2
 
@@ -89,6 +94,10 @@ class Arch:
         assert tid >= 0 and tid < self.ntiles
         return self.idmap[tid]
 
+    def coords_tile(self, r, c):
+        return self.id_backmap[(r, c)]
+
+    @functools.lru_cache(maxsize=2048)
     def addr_llc_coords(self, addr : int):
         tid = (addr >> self.l1.lbits(self.line_size)) & (self.ntiles - 1)
         return (tid // self.ncols), (tid % self.ncols)
@@ -109,6 +118,21 @@ class OracleArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2)
+    }
+
+@dataclass(order=True, frozen=True)
+class CoarseOracle(Arch):
+    defaults = {
+        'freq': 2.4e9,
+        'vbits': 512,
+        'macs': 32,
+        'nrows': 8,
+        'ncols': 8,
+        'mapping': TileMapping.AFFINE,
+        'perfect_compute': True,
+        'noc_ports_per_dir': 1,
+        'line_size': 32,
+        'l1': CacheParams(nbanks=1, capacity=256 * 2**10, assoc=256, rports=2)
     }
 
 @dataclass(order=True, frozen=True)
@@ -161,46 +185,60 @@ class FbcastArch(Arch):
 
 @dataclass(order=True, frozen=True)
 class HierArch(Arch):
-    tiles_per_group : int = None
+    grows : int = None
+    gcols : int = None
     l2 : CacheParams = None
 
-    @property
-    def ntiles(self): return self.nrows * self.ncols * self.tiles_per_group
+    def __post_init__(self):
+        super().__post_init__()
+        assert self.mapping == TileMapping.AFFINE, \
+            'HierArch only works with affine mapping'
 
-    @property
-    def ngroups(self): return self.nrows * self.ncols
+    @functools.cached_property
+    def tiles_per_group(self): return self.grows * self.gcols
 
-    def tid_to_gid(self, tid):
-        return tid // self.tiles_per_group
+    @functools.cached_property
+    def ngroups(self): return self.ntiles // self.tiles_per_group
 
-    def tile_coords(self, tid):
-        assert tid >= 0 and tid < self.ntiles
-        gid = self.tid_to_gid(tid)
-        r, c = self.idmap[gid]
-        return r, c
+    @functools.cached_property
+    def groups_per_row(self): return self.nrows // self.grows
 
-    def group_coords(self, gid):
+    @functools.cached_property
+    def groups_per_col(self): return self.ncols // self.gcols
+
+    @functools.lru_cache(maxsize=2048)
+    def tid_to_gid(self, tid : int):
+        r, c = self.tile_coords(tid)
+        return r // self.grows * self.gcols + c // self.gcols
+
+    @functools.lru_cache(maxsize=2048)
+    def group_base_coords(self, gid):
         assert gid >= 0 and gid < self.ngroups
-        r, c = self.idmap[gid]
-        return r, c
+        gr, gc = gid // self.groups_per_col, gid % self.groups_per_col
+        return gr * self.grows, gc * self.gcols
 
-    def addr_llc_coords(self, addr : int):
-        gid = (addr >> self.l1.lbits(self.line_size)) & (self.ngroups - 1)
-        return (gid // self.ncols), (gid % self.ncols)
+    @functools.lru_cache(maxsize=2048)
+    def addr_l2_coords(self, addr : int, gid : int):
+        assert gid >= 0 and gid < self.ngroups
+        br, bc = self.group_base_coords(gid)
+        gtid = (addr >> self.l2.lbits(self.line_size)) & (self.tiles_per_group - 1)
+        r, c = br + (gtid // self.gcols), bc + (gtid % self.gcols)
+        return r, c
 
     defaults = {
         'freq': 2.4e9,
         'vbits': 512,
         'macs': 1,
-        'nrows': 4,
-        'ncols': 16,
+        'nrows': 32,
+        'ncols': 64,
         'mapping': TileMapping.AFFINE,
         'perfect_compute': False,
         'noc_ports_per_dir': 1,
         'line_size': 64,
-        'l1': CacheParams(nbanks=None, capacity=64 * 2**10, assoc=16, rports=2),
-        'tiles_per_group': 32,
-        'l2': CacheParams(nbanks=None, capacity=256 * 2**10, assoc=8, rports=1),
+        'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
+        'grows': 4,
+        'gcols': 4,
+        'l2': CacheParams(nbanks=None, capacity=128 * 2**10, assoc=8, rports=1),
     }
 
 
@@ -223,15 +261,17 @@ def arch_factory(arch_name, kwargs):
         'oracle': OracleArch,
         'bg': BgroupArch,
         'fbc': FbcastArch,
-        'hier': HierArch
+        'hier': HierArch,
+        'coarse': CoarseOracle
     }[arch_name]
 
     args = arch_cls.defaults.copy()
     keys = set(args.keys())
 
-    if kwargs['l1'] is not None: args['l1'] = CacheParams.from_str(kwargs['l1'])
-    if kwargs['l2'] is not None: args['l2'] = CacheParams.from_str(kwargs['l2'])
-    if kwargs['mapping'] is not None: args['mapping'] = TileMapping.from_str(v)
+    if kwargs['l1'] is not None: kwargs['l1'] = CacheParams.from_str(kwargs['l1'])
+    if kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
+    if kwargs['mapping'] is not None: kwargs['mapping'] = TileMapping.from_str(kwargs['mapping'])
+    if kwargs['noc_ports'] is not None: kwargs['noc_ports_per_dir'] = kwargs['noc_ports']
 
     for k, v in kwargs.items():
         if v is not None and k in keys: args[k] = v

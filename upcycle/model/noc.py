@@ -80,17 +80,30 @@ class Noc:
 
         return route
 
-    def count_hop(self, rs : Router, rd : Router):
-        if rs.r > rd.r: rs.out_south += 1
-        elif rs.r < rd.r: rs.out_north += 1
-        elif rs.c > rd.c: rs.out_west += 1
-        else: rs.out_east += 1
+    def count_hop(self, rs : Router, rd : Router, n : int = 1):
+        if rs.r > rd.r: rs.out_south += n
+        elif rs.r < rd.r: rs.out_north += n
+        elif rs.c > rd.c: rs.out_west += n
+        else: rs.out_east += n
 
     def count_route(self, route):
         route[0].inject += 1
         route[-1].eject += 1
         for i in range(len(route) - 1):
             self.count_hop(route[i], route[i + 1])
+
+    def count_multiroute(self, src : tuple[int, int], dests : list[tuple[int, int]], n : int = 1):
+        r, c = src
+        self[r, c].inject += 1
+        for (dr, dc) in dests: self[dr, dc].eject += 1
+        routes = [self.get_route((r, c), (dr, dc)) for (dr, dc) in dests]
+
+        seen_hops = set[(Router, Router)]()
+        for route in routes:
+            for (rs, rd) in self.route_hops(route):
+                if (rs, rd) in seen_hops: continue
+                seen_hops.add((rs, rd))
+                self.count_hop(rs, rd, n)
 
     def route_hops(self, route):
         for i in range(len(route) - 1):

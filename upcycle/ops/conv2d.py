@@ -291,6 +291,31 @@ def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
         for bc0 in Slice(0, conv.c).blkslice(1)
     ])
 
+@M.register_placement('pg', [CoarseOracle], Conv2D)
+def place_conv2d_coarse_arch(arch : CoarseOracle, conv : Conv2D, sim : M.SimBase):
+    ti, tw, to = make_conv2d_tensors(arch, conv)
+
+    tile = {
+        (Dtype.I8, False): Conv2DTileI8,
+        (Dtype.I8, True): Conv2DTileI8TW,
+        (Dtype.FP16, False): Conv2DTileFP16,
+        (Dtype.FP16, True): Conv2DTileFP16TW,
+    }[(conv.dtype, conv.tr_w)]
+
+    sim.map2d_place([
+        [
+            [
+                tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bc1, bk0)
+                for bc1 in bc0.subslice(tile.tc)
+            ]
+            for bk0 in Slice(0, conv.k).subslice(tile.tk)
+            for bq0 in Slice(0, conv.q).subslice(tile.tq)
+            for bc0 in Slice(0, conv.c).blkslice(1)
+            for ni in Slice(0, conv.n).indices
+        ]
+        for bp0 in Slice(0, conv.p).blkslice(arch.nrows)
+    ])
+
 
 @M.register_placement('pg', [OracleArch, BgroupArch, FbcastArch, HierArch], Conv2D)
 def place_conv2d_profiled(arch : Arch, conv : Conv2D, sim : M.SimBase):

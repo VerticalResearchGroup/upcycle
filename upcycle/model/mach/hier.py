@@ -25,11 +25,6 @@ class HierSim(Sim):
             for _ in range(arch.ngroups)
         ]
 
-@noc.zero_traffic.register(HierArch)
-def _(arch : HierArch):
-    return np.zeros(
-        (arch.nrows, arch.ncols, noc.NocDir.DIRMAX + 1), dtype=np.uint32)
-
 def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
     dest_map = sim.dest_maps.get(step, None)
     if dest_map is None: return
@@ -37,36 +32,34 @@ def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : 
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
     l2_dl = c_model.DestList()
-    l2_broadcasts = [0 for _ in range(arch.ngroups)]
 
+    # 1. For each line, determine if the local L2 needs it, and then count
+    #    L2 -> L1 traffic.
     for l, mask in dest_map.dests.items():
-        groups = set(arch.tid_to_gid(tid) for tid in get_dest_tids(arch, mask))
+        gids = set(arch.tid_to_gid(tid) for tid in get_dest_tids(arch, mask))
+        groups = {gid: [] for gid in gids}
 
-        for gid in groups:
-            if sim.l2[gid].lookup(l):
-                sim.l2[gid].insert(l)
-                continue
+        for tid in get_dest_tids(arch, mask):
+            gid = arch.tid_to_gid(tid)
+            groups[gid].append(tid)
+
+        for gid, tids in groups.items():
+            hit = sim.l2[gid].lookup(l)
             sim.l2[gid].insert(l)
-            l2_dl.set(l, gid)
+            if not hit: l2_dl.set(l, gid)
 
-    for line, mask in l2_dl.dests.items():
-        r, c = arch.addr_llc_coords(line)
-        net[r, c].inject += 1
+            net.count_multiroute(
+                arch.addr_l2_coords(l, gid),
+                [arch.tile_coords(tid) for tid in tids],
+                2 if arch.line_size == 64 else 1)
 
-        for (dr, dc) in get_dests(arch, mask): net[dr, dc].eject += 1
-
-        routes = [
-            net.get_route((r, c), (dr, dc))
-            for (dr, dc) in get_dests(arch, mask)
-        ]
-
-        seen_hops = set[(noc.Router, noc.Router)]()
-        for route in routes:
-            for (rs, rd) in net.route_hops(route):
-                if (rs, rd) in seen_hops: continue
-                seen_hops.add((rs, rd))
-                net.count_hop(rs, rd)
-                if arch.line_size == 64: net.count_hop(rs, rd)
+    # 2. Now that we've pruned the dest list down to the L2s that need the
+    #    lines, we can count LLC -> L2 traffic.
+    for l, mask in l2_dl.dests.items():
+        net.count_multiroute(
+            arch.addr_llc_coords(l),
+            get_dests(arch, mask),
+            2 if arch.line_size == 64 else 1)
 
     t1 = time.perf_counter()
 
@@ -74,11 +67,8 @@ def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : 
         logger.debug(f'+ Noc simulation took {t1 - t0}s')
 
     traffic = noc.zero_traffic(arch)
-    traffic[:, :, 0:noc.NocDir.DIRMAX] += net.to_numpy()
+    traffic[:, :, :] += net.to_numpy()
 
-    for gid in range(arch.ngroups):
-        r, c = arch.group_coords(gid)
-        traffic[r, c, noc.NocDir.DIRMAX] = 0 #l2_broadcasts[gid]
 
     return traffic
 

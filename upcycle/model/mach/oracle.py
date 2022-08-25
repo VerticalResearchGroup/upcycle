@@ -19,24 +19,10 @@ def simulate_oracle_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
 
     if dest_map is not None:
         for line, mask in dest_map.dests.items():
-            r, c = arch.addr_llc_coords(line)
-            net[r, c].inject += 1
-
-            for (dr, dc) in get_dests(arch, mask): net[dr, dc].eject += 1
-
-            routes = [
-                net.get_route((r, c), (dr, dc))
-                for (dr, dc) in get_dests(arch, mask)
-            ]
-
-            seen_hops = set[(noc.Router, noc.Router)]()
-            for route in routes:
-                for (rs, rd) in net.route_hops(route):
-                    if (rs, rd) in seen_hops: continue
-                    seen_hops.add((rs, rd))
-                    net.count_hop(rs, rd)
-                    if arch.line_size == 64: net.count_hop(rs, rd)
-
+            net.count_multiroute(
+                arch.addr_llc_coords(line),
+                get_dests(arch, mask),
+                2 if arch.line_size == 64 else 1)
     t1 = time.perf_counter()
 
     if logger.isEnabledFor(logging.DEBUG):

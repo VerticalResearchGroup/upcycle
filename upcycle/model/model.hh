@@ -24,6 +24,8 @@ public:
     Cache(size_t _nset, size_t _nway, size_t _laddrbits) :
         nset(_nset), nway(_nway), laddrbits(_laddrbits), accesses(0), hits(0), tags()
     {
+        if (nset == 0) return;
+
         for (size_t set = 0; set < nset; set++) {
             tags.push_back({});
             mru.push_back(0);
@@ -35,6 +37,7 @@ public:
 
     inline bool lookup(uint64_t addr) {
         accesses++;
+        if (nset == 0) return false;
         const uint64_t line = (addr >> laddrbits) % nset;
         for (const auto& entry : tags[line]) {
             if (entry.first && entry.second == addr) {
@@ -46,6 +49,7 @@ public:
     }
 
     inline void insert(uint64_t addr) {
+        if (nset == 0) return;
         if (lookup(addr)) return;
         const uint64_t setid = (addr >> laddrbits) % nset;
         auto& set = tags[setid];
