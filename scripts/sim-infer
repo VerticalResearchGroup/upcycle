@@ -3,7 +3,7 @@
 # set -x
 APPS=${APPS:-resnet50 bert-large-squad ssdrn34-1200 unet}
 LS=${LS:-32}
-PORTS=${PORTS:-1 2}
+PORTS=${PORTS:-1}
 ARCHS=${ARCHS:-oracle bg}
 PAR=${PAR:-16}
 

@@ -1,5 +1,5 @@
 from .common import *
-from .matmul import Matmul, MatmulBwd, Linear, LinearBwd
+from .matmul import Matmul, MatmulDa, MatmulDb, Linear, LinearDi, LinearDw
 from .conv2d import Conv2D
 from .conv2d_di import Conv2DDi
 from .conv2d_dw import Conv2DDw

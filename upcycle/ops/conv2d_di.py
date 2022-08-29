@@ -185,3 +185,20 @@ def place_convdi_stride1(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     assert new_conv.flops == conv.flops
     return M.place_op(arch, new_conv, sim, False)
 
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    Conv2DDi(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
+def place_conv2ddw_1x1(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
+    # We observe in this case the convolution degenerates into a large matmul.
+    mm = matmul.MatmulDb.from_forward(matmul.Matmul(
+        conv.dtype,
+        conv.train,
+        1,
+        conv.n * conv.p * conv.q,
+        conv.k,
+        conv.c,
+        False,
+        not conv.tr_w))
+
+    assert mm.flops == conv.flops
+    return M.place_op(arch, mm, sim, False)

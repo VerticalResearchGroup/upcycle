@@ -27,21 +27,18 @@ class Matmul(Operator):
 @operator
 @dataclass(frozen=True)
 @register_backward(Matmul)
-class MatmulBwd(Matmul):
+class MatmulDa(Matmul):
     @staticmethod
     def from_forward(mm : Matmul):
-        return MatmulBwd(mm.dtype, False, mm.l, mm.m, mm.n, mm.k, mm.tr_a, mm.tr_b)
+        return Matmul(mm.dtype, False, mm.l, mm.m, mm.k, mm.n, mm.tr_a, not mm.tr_b)
 
-    @property
-    def da(self) -> Matmul:
-        return Matmul(self.dtype, False, self.l, self.m, self.k, self.n, self.tr_a, not self.tr_b)
-
-    @property
-    def db(self) -> Matmul:
-        return Matmul(self.dtype, False, self.l, self.k, self.n, self.m, not self.tr_a, self.tr_b)
-
-    @property
-    def flops(self): return super().flops * 2
+@operator
+@dataclass(frozen=True)
+@register_backward(Matmul)
+class MatmulDb(Matmul):
+    @staticmethod
+    def from_forward(mm : Matmul):
+        return Matmul(mm.dtype, False, mm.l, mm.k, mm.n, mm.m, not mm.tr_a, mm.tr_b)
 
 @operator
 @dataclass(frozen=True)
@@ -50,8 +47,12 @@ class Linear(Matmul): pass
 @operator
 @dataclass(frozen=True)
 @register_backward(Linear)
-class LinearBwd(MatmulBwd): pass
+class LinearDi(MatmulDa): pass
 
+@operator
+@dataclass(frozen=True)
+@register_backward(Linear)
+class LinearDw(MatmulDb): pass
 
 @dataclass(frozen=True)
 class MatmulTile(M.WorkItem):
@@ -335,7 +336,19 @@ class MatmulTileKMNKFP16(MatmulTile):
         yield from self.a[self.li, self.ks, self.ms]
         yield from self.b[self.li, self.ks, self.ns]
 
-def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None, offset=0):
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    [Matmul, Linear])
+def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
+    l = mm.l
+    m = mm.m
+    n = mm.n
+    k = mm.k
+
+    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
+
     tile = {
         (False, False, Dtype.I8): MatmulTileMKKNI8,
         (False, True, Dtype.I8): MatmulTileMKNKI8,
@@ -357,38 +370,3 @@ def flatmap_matmul(arch : Arch, mm : Matmul, sim : M.SimBase, a, b, c, bbox=None
         for bk0 in Slice(0, mm.k).blkslice(1)
         for li in Slice(0, mm.l).indices
     ])
-
-@M.register_placement(
-    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    [Matmul, Linear])
-def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
-    l = mm.l
-    m = mm.m
-    n = mm.n
-    k = mm.k
-
-    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
-
-    flatmap_matmul(arch, mm, sim, a, b, c)
-
-@M.register_placement(
-    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    [MatmulBwd, LinearBwd])
-def place_matmul_bwd_flatmap(arch : Arch, mm : MatmulBwd, sim : M.SimBase):
-    l = mm.l
-    m = mm.m
-    n = mm.n
-    k = mm.k
-
-    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    # c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
-    da = M.Tensor(arch, 4, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    db = M.Tensor(arch, 5, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    dc = M.Tensor(arch, 6, mm.dtype, (l, m, n))
-
-    off = flatmap_matmul(arch, mm.da, sim, dc, b, da)
-    flatmap_matmul(arch, mm.db, sim, a, dc, db, offset=off)
-

@@ -46,7 +46,7 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
     cyc_frac = np.round(result.cycles / total_cyc * 100, 2)
     logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
-def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, sim_args, verbose=True):
+def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
     counter = multiprocessing.Value('i', 0)
     lock = multiprocessing.Lock()
 

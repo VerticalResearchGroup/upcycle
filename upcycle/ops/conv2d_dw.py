@@ -78,3 +78,50 @@ class Conv2DDwTile(M.WorkItem):
     #         exec_cyc += _exec_cyc
     #     lat = max(num_loads / self.arch.l1.rports, exec_cyc)
     #     return lat
+
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDw)
+def place_conv2d_di_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
+    tdi, tw, tdo = make_conv2d_tensors(arch, conv)
+
+    tile = {
+        (Dtype.FP16, False): Conv2DDwTile,
+    }[(conv.dtype, conv.tr_w)]
+
+    pad = conv.pad
+
+    sim.flatmap_place([
+        [
+            tile(
+                arch, conv, [tdo, tw], [tdi], False,
+                ni,
+                Slice.blk(bh, conv.h + pad, conv.stride),
+                Slice.blk(bw, conv.w + pad, conv.stride),
+                Slice.blk(bk, conv.k, tile.tk),
+                Slice.blk(bc, conv.c, tile.tc))
+            for ni in bn.indices
+            for bk in range(0, conv.k, tile.tk)
+        ]
+        for bn in Slice(0, conv.n).subslice(4)
+        for bh in range(0, conv.h + pad, conv.stride)
+        for bw in range(0, conv.w + pad, conv.stride)
+        for bc in range(0, conv.c, tile.tc)
+    ])
+
+
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    Conv2DDw(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
+def place_conv2ddw_1x1(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
+    # We observe in this case the convolution degenerates into a large matmul.
+    mm = matmul.MatmulDa.from_forward(matmul.Matmul(
+        conv.dtype,
+        conv.train,
+        1,
+        conv.n * conv.p * conv.q,
+        conv.k,
+        conv.c,
+        False,
+        not conv.tr_w))
+
+    assert mm.flops == conv.flops
+    return M.place_op(arch, mm, sim, False)

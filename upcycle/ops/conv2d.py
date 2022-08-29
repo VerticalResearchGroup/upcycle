@@ -290,7 +290,7 @@ def place_conv2d_coarse_arch(arch : CoarseOracle, conv : Conv2D, sim : M.SimBase
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     Conv2D(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
-def place_conv_1x1(arch : Arch, conv : Conv2D, sim : M.SimBase):
+def place_conv2d_1x1(arch : Arch, conv : Conv2D, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
     mm = matmul.Matmul(
         conv.dtype, conv.train, 1, conv.n * conv.p * conv.q, conv.k, conv.c,
