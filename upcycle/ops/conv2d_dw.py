@@ -80,7 +80,7 @@ class Conv2DDwTile(M.WorkItem):
     #     return lat
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDw)
-def place_conv2d_di_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
+def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
     tdi, tw, tdo = make_conv2d_tensors(arch, conv)
 
     tile = {

@@ -339,6 +339,8 @@ class SimBase:
 
         return trows * tcols
 
+    def barrier(self): raise NotImplementedError()
+
 class StepCounter(SimBase):
     """Dummy sim object used to count number of steps for a layer.
 
@@ -351,6 +353,10 @@ class StepCounter(SimBase):
 
     def place_work(self, tid, wl : list[WorkItem]):
         self.cur_step[tid] += len(wl)
+
+    def barrier(self):
+        max_step = max(self.cur_step)
+        for tid in range(len(self.cur_step)): self.cur_step[tid] = max_step
 
     @property
     def nsteps(self): return max(self.cur_step)
@@ -424,6 +430,10 @@ class Sim(SimBase):
             self.rss[tid].append(self.l1[tid].get_accesses() * self.arch.line_size)
             self.l1_accesses += self.l1[tid].get_accesses()
             self.l1_hits += self.l1[tid].get_hits()
+
+    def barrier(self):
+        max_step = max(self.cur_step)
+        for tid in range(len(self.cur_step)): self.cur_step[tid] = max_step
 
     @property
     def nsteps(self): return max(self.cur_step)

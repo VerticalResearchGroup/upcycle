@@ -6,6 +6,6 @@ from .conv2d_dw import Conv2DDw
 from .conv3d import Conv3D
 # from .conv3d_di import Conv3DDi
 # from .conv3d_dw import Conv3DDw
-from .lstm import Lstm
+from .lstm import LstmCell
 from .embed import Embedding
 

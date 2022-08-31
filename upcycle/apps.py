@@ -29,9 +29,9 @@ class Trace:
                     op.n, op.h, op.w, op.c, op.p, op.q, op.k, op.r, op.s,
                     op.stride, op.pad, False)
 
-            elif type(op) is ops.Lstm:
-                self.oplist[i] = ops.Lstm(
-                    op.dtype, op.train, op.n, op.s, op.d, op.h, False, True)
+            elif type(op) is ops.LstmCell:
+                self.oplist[i] = ops.LstmCell(
+                    op.dtype, op.train, op.n, op.d, op.h, False, True)
 
         return self
 
@@ -320,16 +320,16 @@ kits19_patches_per_sample = 1544696 / 24612
 def rnnt_infer(dtype, n, il=239, ol=120):
     return Trace(([
         # Encoder
-        ops.Lstm(dtype, False, n, 1, 240, 1024, False, False),
-        ops.Lstm(dtype, False, n, 1, 1024, 1024, False, False),
+        ops.LstmCell(dtype, False, n, 240, 1024, False, False),
+        ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
     ] * il) + ([
-        ops.Lstm(dtype, False, n, 1, 2048, 1024, False, False),
-        ops.Lstm(dtype, False, n, 1, 1024, 1024, False, False),
-        ops.Lstm(dtype, False, n, 1, 1024, 1024, False, False)
+        ops.LstmCell(dtype, False, n, 2048, 1024, False, False),
+        ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
+        ops.LstmCell(dtype, False, n, 1024, 1024, False, False)
     ] * (il // 2)) + ([
         # Decoder
-        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
-        ops.Lstm(dtype, False, n, 1, 320, 320, False, False),
+        ops.LstmCell(dtype, False, n, 320, 320, False, False),
+        ops.LstmCell(dtype, False, n, 320, 320, False, False),
         ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
         ops.Linear(dtype, False, 1, n, 512, 28, False, False),
     ] * ol))
@@ -446,7 +446,7 @@ mlperf_v1_apps = {
         # N.B. 178 reflects the average tokens per query from the SQuAD dataset.
         lambda dtype, n: bertlarge(dtype, n, 178), Dtype.I8,
         None, None,
-        BatchSizes(1, 4, None, None)),
+        BatchSizes(1, 16, None, None)),
     'bert-large-pretrain': App(
         None, None,
         # N.B. The official MLPerf code was run with bert pretraining for a full
@@ -463,6 +463,10 @@ mlperf_v1_apps = {
         # N.B. The official MLPerf inference benchmark uses librespeech dataset
         # which has an average input length of 239, output length of 120.
         lambda dtype, n: rnnt_infer(dtype, n, il=239, ol=120), Dtype.FP16,
+        rnnt_train, Dtype.FP16,
+        BatchSizes(1, 512, 1, 512)),
+    'rnnt-test': App(
+        lambda dtype, n: rnnt_infer(dtype, n, il=389, ol=191), Dtype.FP16,
         rnnt_train, Dtype.FP16,
         BatchSizes(1, 512, 1, 512)),
     'dlrm': App(
