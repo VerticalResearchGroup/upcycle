@@ -456,6 +456,8 @@ def num_steps(
     """
     sim = StepCounter(arch)
     place_op(arch, op, sim, check_flops=False)
+
+    logger.debug(f'Counted {sim.nsteps} steps for op = {op}')
     return sim.nsteps
 
 def common_sim(

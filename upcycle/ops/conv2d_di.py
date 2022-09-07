@@ -22,14 +22,16 @@ class Conv2DDi(Conv2D):
 @dataclass(frozen=True)
 class Conv2DDiTile(M.WorkItem):
     write : bool
-    ni : int
+    ns : Slice
     hs : Slice
     ws : Slice
     ks : Slice
     cs : Slice
 
     tc = 32
-    tk = 32
+    tk = 2
+    ttk = 1
+    tn = 1
 
     @property
     def do(self): return self.inputs[0]
@@ -43,18 +45,18 @@ class Conv2DDiTile(M.WorkItem):
     @functools.cached_property
     def ps(self):
         return Slice(
-            (self.hs.start + self.conv.pad) // self.conv.stride,
-            self.hs.stop // self.conv.stride)
+            (self.hs.start + self.op.pad) // self.op.stride,
+            self.hs.stop // self.op.stride)
 
     @functools.cached_property
     def qs(self):
         return Slice(
-            (self.ws.start + self.conv.pad) // self.conv.stride,
-            self.ws.stop // self.conv.stride)
+            (self.ws.start + self.op.pad) // self.op.stride,
+            self.ws.stop // self.op.stride)
 
     @property
     def read_trace(self):
-        yield from self.do[self.ni, self.ps, self.qs, self.ks]
+        yield from self.do[self.ns, self.ps, self.qs, self.ks]
 
         if not self.op.tr_w: yield from self.w[:, :, self.ks, self.cs]
         else: yield from self.w[:, :, self.cs, self.ks]
@@ -66,29 +68,30 @@ class Conv2DDiTile(M.WorkItem):
 
     def _small_gemm(self, n):
         ns = Slice(0, n)
-        # Each small gemm is basically a Cx1xK matmul with KMKN layout. This
+        # Each small gemm is basically a CxNxK matmul with KMKN layout. This
         # code should look similar to the FP16 matmul code.
 
         num_loads = 0
         exec_cyc = 0
         for css in self.cs.subslice(self.tc):
-            for kss in self.ks.subslice(1):
-                num_loads += M.nloads(
-                    self.arch,
-                    Dtype.FP16,
-                    css, self.op.c,
-                    self.ks, self.op.k,
-                    transpose=True)
-
-                for nss in ns.subslice(1):
+            for nss in ns.subslice(self.tn):
+                for kss in self.ks.subslice(self.tk):
                     num_loads += M.nloads(
                         self.arch,
                         Dtype.FP16,
-                        kss, self.op.k,
-                        nss, n,
-                        contig=False)
+                        css, self.op.c,
+                        self.ks, self.op.k,
+                        transpose=True)
 
-                    exec_cyc += 1
+                    for ksss in kss.subslice(self.ttk):
+                        num_loads += M.nloads(
+                            self.arch,
+                            Dtype.FP16,
+                            ksss, self.op.k,
+                            nss, n,
+                            contig=False)
+
+                        exec_cyc += len(nss)
 
         return num_loads, exec_cyc
 
@@ -102,23 +105,24 @@ class Conv2DDiTile(M.WorkItem):
         # N.B. I wrote this down as a diagram first but basically what we need
         # to do is for each pixel of dI we are computing, find the corresponding
         # _set_ of filter pixels it is multiplied with.
-        for h in self.hs.indices:
-            if h < pad or h >= self.op.h + pad: continue
-            oh = h % st
-            for w in self.ws.indices:
-                if w < pad or w >= self.op.w + pad: continue
-                ow = w % st
-                n = 0
-                for r in range(oh, self.op.r, st):
-                    for s in range(ow, self.op.s, st):
-                        p = (h - r) // st
-                        q = (w - s) // st
-                        if p < 0 or p >= self.op.p: continue
-                        if q < 0 or q >= self.op.q: continue
-                        n += 1
+        for n in self.ns.indices:
+            for h in self.hs.indices:
+                if h < pad or h >= self.op.h + pad: continue
+                oh = h % st
+                for w in self.ws.indices:
+                    if w < pad or w >= self.op.w + pad: continue
+                    ow = w % st
+                    n = 0
+                    for r in range(oh, self.op.r, st):
+                        for s in range(ow, self.op.s, st):
+                            p = (h - r) // st
+                            q = (w - s) // st
+                            if p < 0 or p >= self.op.p: continue
+                            if q < 0 or q >= self.op.q: continue
+                            n += 1
 
-                gemms[i] = n
-                i += 1
+                    gemms[i] = n
+                    i += 1
 
         return gemms
 
@@ -144,22 +148,24 @@ def place_conv2d_di_default(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     assert conv.tr_w == False
     pad = conv.pad
 
-    sim.flatmap_place([
+    sim.map2d_place([
         [
-            Conv2DDiTile(
-                arch, conv, [tdo, tw], [tdi], False,
-                ni,
-                Slice.blk(bh, conv.h + pad, conv.stride),
-                Slice.blk(bw, conv.w + pad, conv.stride),
-                Slice.blk(bk, conv.k, Conv2DDiTile.tk),
-                Slice.blk(bc, conv.c, Conv2DDiTile.tc))
-            for ni in bn.indices
-            for bk in range(0, conv.k, Conv2DDiTile.tk)
+            [
+                Conv2DDiTile(
+                    arch, conv, [tdo, tw], [tdi], False,
+                    ns, hs, ws, ks, cs)
+
+                for ns in bn1.subslice(1)
+                for hs in bh0.subslice(conv.stride)
+                for ws in bw0.subslice(conv.stride)
+                for cs in Slice(0, conv.c).subslice(Conv2DDiTile.tc * 2)
+                for ks in Slice(0, conv.k).subslice(Conv2DDiTile.tk * 4)
+            ]
+            for bn1 in bn0.blkslice(2)
+            for bw0 in Slice(pad, conv.w + pad).blkslice(arch.ncols // 2)
         ]
-        for bn in Slice(0, conv.n).subslice(4)
-        for bh in range(0, conv.h + pad, conv.stride)
-        for bw in range(0, conv.w + pad, conv.stride)
-        for bc in range(0, conv.c, Conv2DDiTile.tc)
+        for bn0 in Slice(0, conv.n).blkslice(2)
+        for bh0 in Slice(pad, conv.h + pad).blkslice(arch.nrows // 2)
     ])
 
 @M.register_placement(
