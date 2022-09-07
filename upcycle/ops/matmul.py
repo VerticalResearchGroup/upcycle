@@ -290,7 +290,7 @@ class MatmulTileKMKNFP16(MatmulTile):
 
 @dataclass(frozen=True)
 class MatmulTileKMNKFP16(MatmulTile):
-    tm = 32
+    tm = 16
     tn = 4
     tk = 4
 
