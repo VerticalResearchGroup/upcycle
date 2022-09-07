@@ -23,16 +23,21 @@ class Conv2DDw(Conv2D):
 @dataclass(frozen=True)
 class Conv2DDwTile(M.WorkItem):
     write : bool
-    # Serial
-    ns : Slice
-    hs : Slice
-    ws : Slice
 
-    # Parallizable
+    ns : Slice
+    ps : Slice
+    qs : Slice
+
     rs : Slice
     ss : Slice
     ks : Slice
     cs : Slice
+
+    tn = 1
+    tp = 8
+    tq = 16
+    tc = 32
+    tk = 4
 
     @property
     def i(self): return self.inputs[0]
@@ -44,20 +49,14 @@ class Conv2DDwTile(M.WorkItem):
     def dw(self): return self.outputs[0]
 
     @functools.cached_property
-    def ps(self):
-        return Slice(
-            (self.hs.start + self.conv.pad) // self.conv.stride,
-            self.hs.stop // self.conv.stride)
+    def hs(self): return self.ps * self.op.stride
 
     @functools.cached_property
-    def qs(self):
-        return Slice(
-            (self.ws.start + self.conv.pad) // self.conv.stride,
-            self.ws.stop // self.conv.stride)
+    def ws(self): return self.qs * self.op.stride
 
     @property
     def read_trace(self):
-        yield from self.do[self.ns, self.hs, self.ws, self.ks]
+        yield from self.i[self.ns, self.hs, self.ws, self.cs]
         yield from self.do[self.ns, self.ps, self.qs, self.ks]
 
     @property
@@ -65,63 +64,90 @@ class Conv2DDwTile(M.WorkItem):
         if not self.write: return
         raise NotImplementedError()
 
-    # @functools.cached_property
-    # def flops(self): return sum(self._gemms) * len(self.cs) * len(self.ks) * 2
+    def _small_gemm(self, n):
+        ns = Slice(0, n)
+        # Each small gemm is basically a CxNxK matmul with KMKN layout. This
+        # code should look similar to the FP16 matmul code.
 
-    # @functools.cached_property
-    # def exec_lat(self):
-    #     num_loads = 0
-    #     exec_cyc = 0
-    #     for n in self._gemms:
-    #         _num_loads, _exec_cyc = self._small_gemm(n)
-    #         num_loads += _num_loads
-    #         exec_cyc += _exec_cyc
-    #     lat = max(num_loads / self.arch.l1.rports, exec_cyc)
-    #     return lat
+        num_loads = 0
+        exec_cyc = 0
+        for css in self.cs.subslice(self.tc):
+            for nss in ns.subslice(1):
+                num_loads += M.nloads(
+                    self.arch,
+                    Dtype.FP16,
+                    css, self.op.c,
+                    nss, n,
+                    transpose=True,
+                    contig=False)
+
+                for kss in self.ks.subslice(1):
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.FP16,
+                        nss, n,
+                        kss, self.op.k,
+                        contig=True)
+
+                    exec_cyc += 1
+
+        return num_loads, exec_cyc
+
+    @functools.cached_property
+    def _gemms(self):
+        gemms = [0 for _ in range(len(self.hs) * len(self.ws))]
+        i = 0
+
+        for ri in self.rs.indices:
+            for si in self.ss.indices:
+                for ni in self.ns.indices:
+                    for pi in self.ps.indices:
+                        gemms[i] = len(self.qs)
+                        i += 1
+
+        return gemms
+
+    @functools.cached_property
+    def flops(self): return sum(self._gemms) * len(self.cs) * len(self.ks) * 2
+
+    @functools.cached_property
+    def exec_lat(self):
+        num_loads = 0
+        exec_cyc = 0
+        for n in self._gemms:
+            _num_loads, _exec_cyc = self._small_gemm(n)
+            num_loads += _num_loads
+            exec_cyc += _exec_cyc
+        lat = max(num_loads / self.arch.l1.rports, exec_cyc)
+        return lat
+
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDw)
 def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
     tdi, tw, tdo = make_conv2d_tensors(arch, conv)
 
-    tile = {
-        (Dtype.FP16, False): Conv2DDwTile,
-    }[(conv.dtype, conv.tr_w)]
+    assert conv.dtype == Dtype.FP16
+    assert conv.tr_w == False
 
-    pad = conv.pad
-
-    sim.flatmap_place([
+    sim.map2d_place([
         [
-            tile(
-                arch, conv, [tdo, tw], [tdi], False,
-                ni,
-                Slice.blk(bh, conv.h + pad, conv.stride),
-                Slice.blk(bw, conv.w + pad, conv.stride),
-                Slice.blk(bk, conv.k, tile.tk),
-                Slice.blk(bc, conv.c, tile.tc))
-            for ni in bn.indices
-            for bk in range(0, conv.k, tile.tk)
+            [
+                Conv2DDwTile(
+                    arch, conv, [tdo, tw], [tdi], False,
+                    ns, ps, qs, br0, bs0, ks, cs)
+
+                for ns in bn1.subslice(Conv2DDwTile.tn)
+                for ps in Slice(0, conv.p).subslice(Conv2DDwTile.tp)
+                for qs in Slice(0, conv.q).subslice(Conv2DDwTile.tq)
+                for cs in Slice(0, conv.c).subslice(Conv2DDwTile.tc)
+                for ks in bk1.subslice(Conv2DDwTile.tk)
+            ]
+            for bn1 in bn0.blkslice(4)
+            for bs0 in Slice(0, conv.s).subslice(1)
+            for bk1 in bk0.blkslice(16)
         ]
-        for bn in Slice(0, conv.n).subslice(4)
-        for bh in range(0, conv.h + pad, conv.stride)
-        for bw in range(0, conv.w + pad, conv.stride)
-        for bc in range(0, conv.c, tile.tc)
+        for bn0 in Slice(0, conv.n).blkslice(4)
+        for br0 in Slice(0, conv.r).subslice(1)
+        for bk0 in Slice(0, conv.k).blkslice(16)
     ])
 
-
-@M.register_placement(
-    [OracleArch, BgroupArch, FbcastArch, HierArch],
-    Conv2DDw(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
-def place_conv2ddw_1x1(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
-    # We observe in this case the convolution degenerates into a large matmul.
-    mm = matmul.MatmulDa.from_forward(matmul.Matmul(
-        conv.dtype,
-        conv.train,
-        1,
-        conv.n * conv.p * conv.q,
-        conv.k,
-        conv.c,
-        False,
-        not conv.tr_w))
-
-    assert mm.flops == conv.flops
-    return M.place_op(arch, mm, sim, False)

@@ -140,28 +140,26 @@ class Conv2DDiTile(M.WorkItem):
 def place_conv2d_di_default(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     tdi, tw, tdo = make_conv2d_tensors(arch, conv)
 
-    tile = {
-        (Dtype.FP16, False): Conv2DDiTile,
-    }[(conv.dtype, conv.tr_w)]
-
+    assert conv.dtype == Dtype.FP16
+    assert conv.tr_w == False
     pad = conv.pad
 
     sim.flatmap_place([
         [
-            tile(
+            Conv2DDiTile(
                 arch, conv, [tdo, tw], [tdi], False,
                 ni,
                 Slice.blk(bh, conv.h + pad, conv.stride),
                 Slice.blk(bw, conv.w + pad, conv.stride),
-                Slice.blk(bk, conv.k, tile.tk),
-                Slice.blk(bc, conv.c, tile.tc))
+                Slice.blk(bk, conv.k, Conv2DDiTile.tk),
+                Slice.blk(bc, conv.c, Conv2DDiTile.tc))
             for ni in bn.indices
-            for bk in range(0, conv.k, tile.tk)
+            for bk in range(0, conv.k, Conv2DDiTile.tk)
         ]
         for bn in Slice(0, conv.n).subslice(4)
         for bh in range(0, conv.h + pad, conv.stride)
         for bw in range(0, conv.w + pad, conv.stride)
-        for bc in range(0, conv.c, tile.tc)
+        for bc in range(0, conv.c, Conv2DDiTile.tc)
     ])
 
 @M.register_placement(
