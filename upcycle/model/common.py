@@ -302,7 +302,7 @@ class SimBase:
     to be able to count the number of steps needed for a given layer
     (See StepCounter below).
     """
-    def __init__(self, arch):
+    def __init__(self, arch : Arch):
         self.arch = arch
 
     def place_work(self, tid, wl : list[WorkItem]): raise NotImplementedError()
@@ -325,16 +325,18 @@ class SimBase:
     def map2d_place(self, vtiles : list[list[list[WorkItem]]]):
         trows, tcols = len(vtiles), len(vtiles[0])
 
+        logging.debug(f'map2d_place: {trows}x{tcols} vtiles')
+
         vrow = 0
         for r, m in enumerate(blkdiv(trows, self.arch.nrows)):
-            for tilerow in vtiles[vrow : vrow + m]:
-                vcol = 0
-                for c, n in enumerate(blkdiv(tcols, self.arch.ncols)):
+            vcol = 0
+            for c, n in enumerate(blkdiv(tcols, self.arch.ncols)):
+                tid = self.arch.coords_tile(r, c)
+                for tilerow in vtiles[vrow : vrow + m]:
                     for tile in tilerow[vcol : vcol + n]:
-                        tid = self.arch.coords_tile(r, c)
                         self.place_work(tid, tile)
-                    vcol += n
 
+                vcol += n
             vrow += m
 
         return trows * tcols

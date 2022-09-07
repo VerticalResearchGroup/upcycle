@@ -45,6 +45,10 @@ class LstmCell(Operator):
     def flops(self):
         return self.xt_w.flops + self.ht_u.flops
 
+    @property
+    def total_load_bytes(self):
+        return self.xt_w.total_load_bytes + self.ht_u.total_load_bytes
+
 @dataclass(frozen=True)
 class LstmCellBackend(M.WorkItem):
     @property

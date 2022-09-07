@@ -290,10 +290,9 @@ class MatmulTileKMKNFP16(MatmulTile):
 
 @dataclass(frozen=True)
 class MatmulTileKMNKFP16(MatmulTile):
-    tm = 16
+    tm = 32
     tn = 4
     tk = 4
-    ttk = 1
 
     def __post_init__(self):
         assert self.op.dtype == Dtype.FP16
@@ -315,19 +314,16 @@ class MatmulTileKMNKFP16(MatmulTile):
                         kss, self.op.k,
                         transpose=True)
 
-                    # We further subtile k by another factor (ttk) and issue a
-                    # VLB4X4 from B for each ttk chunk
-                    for ksss in kss.subslice(self.ttk):
-                        num_loads += M.nloads(
-                            self.arch,
-                            Dtype.FP16,
-                            ksss, self.op.k,
-                            nss, self.op.n,
-                            transpose=True)
+                    # For NK, B is contig. in K, so we just load as many lines
+                    # as are needed to cover the kslice we are operating on.
+                    num_loads += M.nloads(
+                        self.arch,
+                        Dtype.FP16,
+                        kss, self.op.k,
+                        nss, self.op.n,
+                        transpose=True)
 
-                        # The number of vector FMAs issued is the product of
-                        # m and n slice sizes.
-                        exec_cyc += len(nss)
+                    exec_cyc += len(nss) * cld(len(kss), 2)
 
         return max(num_loads / self.arch.l1.rports, exec_cyc)
 
@@ -339,7 +335,7 @@ class MatmulTileKMNKFP16(MatmulTile):
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
     [Matmul, Linear])
-def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
+def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
     n = mm.n
@@ -358,15 +354,16 @@ def place_matmul_flatmap(arch : Arch, mm : Matmul, sim : M.SimBase):
         (True, True, Dtype.FP16): MatmulTileKMNKFP16,
     }[(mm.tr_a, mm.tr_b, mm.dtype)]
 
-    sim.flatmap_place([
+    sim.map2d_place([
         [
-            tile(arch, mm, [a, b], [c], False, li, bm1, bn1, bk1)
-            for bm1 in bm0.subslice(tile.tm * 2)
-            for bk1 in bk0.subslice(tile.tk * 2)
-            for bn1 in bn0.subslice(tile.tn * 2)
+            [
+                tile(arch, mm, [a, b], [c], False, li, bm1, bn1, bk1)
+                for li in Slice(0, mm.l).indices
+                for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
+                for bm1 in bm0.subslice(tile.tm * 4)
+                for bn1 in bn0.subslice(tile.tn * 4)
+            ]
+            for bm0 in Slice(0, mm.m).blkslice(64)
         ]
-        for bm0 in Slice(0, mm.m).blkslice(64)
         for bn0 in Slice(0, mm.n).blkslice(32)
-        for bk0 in Slice(0, mm.k).blkslice(1)
-        for li in Slice(0, mm.l).indices
     ])
