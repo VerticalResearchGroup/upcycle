@@ -16,6 +16,7 @@ class Conv2D(Operator):
     """2D Convolution Operator."""
     # Batch
     n : int
+
     # Input: (n, h, w, c)
     h : int
     w : int
@@ -101,7 +102,6 @@ class Conv2DTile(M.WorkItem):
         raise NotImplementedError()
 
     def nloads_a(self, css, kss): raise NotImplementedError()
-
     def nloads_b(self, kss, qss): raise NotImplementedError()
 
     @functools.cached_property

@@ -24,8 +24,12 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 # logging.getLogger('upcycle.ops.common').setLevel(logging.INFO)
 
 
-def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator):
-    logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, steps : bool):
+    if steps:
+        nsteps = U.model.num_steps(arch, op)
+        logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset} ({nsteps} steps)')
+    else:
+        logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
@@ -34,10 +38,10 @@ if __name__ == '__main__':
     U.apps.workload_cli_params(parser)
 
     parser.add_argument('-p', '--parallel', type=int, default=1)
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-s', '--steps', action='store_true')
 
     args = parser.parse_args()
-    logger.setLevel(logging.DEBUG)
+    # logger.setLevel(logging.DEBUG)
 
 
     arch = U.arch.arch_from_cli(args)
@@ -50,4 +54,4 @@ if __name__ == '__main__':
     logging.info('=' * 40)
 
     for i, op in enumerate(trace.oplist):
-        log_layer(arch, dtype, trace, i, op)
+        log_layer(arch, dtype, trace, i, op, args.steps)

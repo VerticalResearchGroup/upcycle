@@ -368,6 +368,7 @@ class Sim(SimBase):
         super().__init__(arch)
         self.dest_maps = {}
         self.exec_cycles = {}
+        self.perfect_exec_cycles = {}
         self.rss = [[] for _ in range(arch.ntiles)]
         self.l1_accesses = 0
         self.l1_hits = 0
@@ -381,10 +382,12 @@ class Sim(SimBase):
             for _ in range(arch.ntiles)
         ]
 
-    def log_exec_cycles(self, step, tid, ncycles):
+    def log_exec_cycles(self, step, tid, ncycles, perfect):
         if step not in self.exec_cycles:
             self.exec_cycles[step] = np.zeros(self.arch.ntiles, dtype=np.int32)
+            self.perfect_exec_cycles[step] = np.zeros(self.arch.ntiles, dtype=np.int32)
         self.exec_cycles[step][tid] += ncycles
+        self.perfect_exec_cycles[step][tid] += perfect
 
     def log_read(self, step, tid, laddr):
         if step not in self.dest_maps:
@@ -400,6 +403,9 @@ class Sim(SimBase):
             self.l1[tid].reset()
             step = tile_cur_step + i
 
+            if logger.isEnabledFor(logging.DEBUG) and tid == 0:
+                logger.debug(f'Tile 0: step={step} wi={wi}')
+
             if step not in self.dest_maps:
                 self.dest_maps[step] = c_model.DestList()
 
@@ -410,7 +416,7 @@ class Sim(SimBase):
 
             exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
 
-            self.log_exec_cycles(step, tid, exec_lat)
+            self.log_exec_cycles(step, tid, exec_lat, wi.perfect_exec_lat)
             self.flops += wi.flops
 
             if USE_C_TRACE:
@@ -495,13 +501,14 @@ def common_sim(
     # we just need to simulate the traffic for each step.
     for step in range(nsteps):
         max_exec_cyc = max(sim.exec_cycles[step])
+        perfect_exec_cyc = max(sim.perfect_exec_cycles[step])
         traffic = noc_sim_func(arch, kwstats, step, sim)
         net_latency = np.max(traffic) / arch.noc_ports_per_dir
         total_traffic += traffic
 
         if logger.isEnabledFor(logging.DEBUG):
             cores_used = np.count_nonzero(sim.exec_cycles[step])
-            logger.debug(f'Step {step + 1}/{sim.nsteps}: Cores used: {cores_used}, Exec latency: {compute_cyc} cyc, Noc latency: {net_latency} cyc')
+            logger.debug(f'Step {step + 1}/{sim.nsteps}: Cores used: {cores_used}, Exec latency: {compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
 
         # Update compute_cyc after this line because compute is one time-step
         # behind prefetch.

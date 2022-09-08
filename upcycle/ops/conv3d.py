@@ -12,24 +12,41 @@ logger = logging.getLogger(__name__)
 @operator
 @dataclass(frozen=True)
 class Conv3D(Operator):
+    # Batch
     n : int
 
+    # Input: (n, h, w, d, c)
     h : int
     w : int
     d : int
     c : int
 
+    # Output: (n, p, q, o, k)
     p : int
     q : int
     o : int
     k : int
 
+    # Filter: (r, s, t, k, c)
     r : int
     s : int
     t : int
+
     stride : int
     pad : int
+
+    # Whether or not the weight tensor is assumed to be transposed in C and K
+    # dimensions. This essentially determines the layout of the small matrix
+    # multiplies that occur.
     tr_w : bool
+
+    # Whether or not the weight is assumed to be rotated in R and S dimensions.
+    # I.e. when this is True, the layout of W is (-r, -s, -t, k, c).
+    #
+    # N.B. This is functionally unused since the algorithm doesn't care what
+    # spatial direction the weight is accessed in, but I still include it here
+    # for clarity.
+    rot_w : bool = False
 
     @property
     def flops(self):
@@ -42,17 +59,8 @@ class Conv3D(Operator):
             self.r * self.s * self.t * self.k * self.c) * \
             Dtype.sizeof(self.dtype)
 
-@operator
-@dataclass(frozen=True)
-@register_backward(Conv3D)
-class Conv3DBwd(Conv3D):
-    @property
-    def flops(self): return super().flops * 2
-
-    @staticmethod
-    def from_forward(c : Conv3D):
-        return Conv3DBwd(c.dtype, False, c.n, c.h, c.w, c.d, c.c, c.p, c.q, c.o, c.k, c.r, c.s, c.t, c.stride, c.pad, c.tr_w)
-
+    def __repr__(self):
+        return f'Conv3D(n={self.n}, i={self.h}x{self.w}x{self.d}x{self.c} w={self.r}x{self.s}x{self.t}x{self.k}x{self.c} o={self.p}x{self.q}x{self.o}x{self.k} by {self.stride})'
 
 @dataclass(frozen=True)
 class Conv3DTile(M.WorkItem):
@@ -96,9 +104,7 @@ class Conv3DTile(M.WorkItem):
         if not self.write: return
         raise NotImplementedError()
 
-
     def nloads_a(self, css, kss): raise NotImplementedError()
-
     def nloads_b(self, kss, oss): raise NotImplementedError()
 
     @property

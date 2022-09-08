@@ -53,8 +53,14 @@ class Trace:
                     op.n, op.h, op.w, op.c, op.p, op.q, op.k, op.r, op.s,
                     op.stride, op.pad, False)
 
-            elif type(op) is ops.Lstm:
-                self.oplist[i] = ops.Lstm(
+            elif type(op) is ops.Conv3D:
+                self.oplist[i] = ops.Conv3D(
+                    op.dtype, op.train,
+                    op.n, op.h, op.w, op.d, op.c, op.p, op.q, op.o, op.k, op.r, op.s, op.t,
+                    op.stride, op.pad, False)
+
+            elif type(op) is ops.LstmCell:
+                self.oplist[i] = ops.LstmCell(
                     op.dtype, op.train, op.n, op.s, op.d, op.h, False, False)
 
         bwd_list = []

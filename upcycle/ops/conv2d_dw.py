@@ -34,7 +34,7 @@ class Conv2DDwTile(M.WorkItem):
     cs : Slice
 
     tn = 1
-    tp = 8
+    tp = 2
     tq = 16
     tc = 32
     tk = 4
@@ -124,7 +124,7 @@ class Conv2DDwTile(M.WorkItem):
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDw)
 def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
-    tdi, tw, tdo = make_conv2d_tensors(arch, conv)
+    ti, tdw, tdo = make_conv2d_tensors(arch, conv)
 
     assert conv.dtype == Dtype.FP16
     assert conv.tr_w == False
@@ -133,7 +133,7 @@ def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
         [
             [
                 Conv2DDwTile(
-                    arch, conv, [tdo, tw], [tdi], False,
+                    arch, conv, [ti, tdo], [tdw], False,
                     ns, ps, qs, br0, bs0, ks, cs)
 
                 for ns in bn1.subslice(Conv2DDwTile.tn)
