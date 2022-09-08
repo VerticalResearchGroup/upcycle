@@ -433,7 +433,7 @@ mlperf_v1_apps = {
     'resnet50': App(
         resnet50, Dtype.I8,
         resnet50, Dtype.FP16,
-        BatchSizes(1, 8, 1, 4)),
+        BatchSizes(1, 8, 1, 16)),
     'ssdrn34-300': App(
         None, None,
         ssdrn34_300, Dtype.FP16,
