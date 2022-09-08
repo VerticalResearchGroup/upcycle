@@ -48,3 +48,36 @@ def resnet50_small_spatial(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
     ])
 
 
+
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    ops.Conv2DDw(None, None, 16, None, None, None, None, None, None, 3, 3, None, None, None, None))
+def place_conv2d_dw_default(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
+    tdi, tw, tdo = ops.conv2d.make_conv2d_tensors(arch, conv)
+
+    tile = ops.conv2d_dw.Conv2DDwTile
+
+    assert conv.dtype == Dtype.FP16
+    assert conv.tr_w == False
+
+    sim.map2d_place([
+        [
+            [
+                tile(
+                    arch, conv, [tdo, tw], [tdi], False,
+                    ns, ps, qs, br0, bs0, ks, cs)
+
+                for ns in bn1.subslice(tile.tn)
+                for ps in Slice(0, conv.p).subslice(tile.tp)
+                for qs in Slice(0, conv.q).subslice(tile.tq)
+                for cs in Slice(0, conv.c).subslice(tile.tc)
+                for ks in bk1.subslice(tile.tk)
+            ]
+            for bn1 in bn0.blkslice(4)
+            for bs0 in Slice(0, conv.s).blkslice(3)
+            for bk1 in bk0.blkslice(4)
+        ]
+        for bn0 in Slice(0, conv.n).blkslice(4)
+        for br0 in Slice(0, conv.r).blkslice(3)
+        for bk0 in Slice(0, conv.k).blkslice(2)
+    ])
