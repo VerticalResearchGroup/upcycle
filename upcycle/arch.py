@@ -244,7 +244,7 @@ class HierArch(Arch):
 
 
 def arch_cli_params(parser):
-    parser.add_argument('-r', '--arch', type=str, default='oracle')
+    parser.add_argument('-r', '--arch', type=str, default='hier')
     parser.add_argument('--noc-ports', type=int, default=None)
     parser.add_argument('--l1', type=str, default=None)
     parser.add_argument('--l2', type=str, default=None)
