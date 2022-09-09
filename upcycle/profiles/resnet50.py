@@ -47,6 +47,36 @@ def resnet50_small_spatial(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
         for bp0 in Slice(0, conv.p).blkslice(cld(arch.nrows, 4))
     ])
 
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    ops.Matmul(None, None, 1, Slice(2**12, 2**32), Slice(1, 128), Slice(1, 128), False, False))
+def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
+    l = mm.l
+    m = mm.m
+    n = mm.n
+    k = mm.k
+
+    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
+
+    tile = ops.matmul.MatmulTileMKKNFP16
+    assert not mm.tr_a and not mm.tr_b
+
+    sim.map2d_place([
+        [
+            [
+                tile(arch, mm, [a, b], [c], False, li, bm2, bn1, bk1)
+                for li in Slice(0, mm.l).indices
+                for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
+                for bm2 in bm1.subslice(tile.tm * 4)
+                for bn1 in Slice(0, mm.n).subslice(tile.tn * 4)
+            ]
+            for bm1 in bm0.blkslice(64)
+        ]
+        for bm0 in Slice(0, mm.m).blkslice(32)
+    ])
+
 
 
 @M.register_placement(

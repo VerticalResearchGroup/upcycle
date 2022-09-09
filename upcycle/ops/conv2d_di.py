@@ -194,7 +194,7 @@ def place_convdi_stride1(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     Conv2DDi(None, None, None, None, None, None, None, None, None, 1, 1, None, None, None))
 def place_conv2ddi_1x1(arch : Arch, conv : Conv2DDi, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
-    mm = matmul.MatmulDb.from_forward(matmul.Matmul(
+    mm = matmul.MatmulDa.from_forward(matmul.Matmul(
         conv.dtype,
         conv.train,
         1,
