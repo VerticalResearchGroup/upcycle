@@ -50,7 +50,7 @@ def resnet50_small_spatial(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
     ops.Matmul(None, None, 1, Slice(2**12, 2**32), Slice(1, 128), Slice(1, 128), False, False))
-def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
+def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
     n = mm.n
@@ -77,7 +77,39 @@ def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
         for bm0 in Slice(0, mm.m).blkslice(32)
     ])
 
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    ops.Matmul(None, None, 1, Slice(1, 128), Slice(1, 128), Slice(2**12, 2**32), True, True))
+def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
+    l = mm.l
+    m = mm.m
+    n = mm.n
+    k = mm.k
 
+    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
+    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
+    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
+
+    tile = ops.matmul.MatmulTileKMNKFP16
+    assert mm.tr_a and mm.tr_b
+
+    sim.map2d_place([
+        [
+            [
+                tile(arch, mm, [a, b], [c], False, li, bm1, bn1, bk2)
+                for li in Slice(0, mm.l).indices
+                for bk2 in bk1.subslice(tile.tk * 4)
+                for bm1 in bm0.subslice(tile.tm * 4)
+                for bn1 in bn0.subslice(tile.tn * 4)
+            ]
+            for bk1 in bk0.blkslice(8)
+            for bn0 in Slice(0, mm.n).blkslice(8)
+        ]
+        for bk0 in Slice(0, mm.k).blkslice(8)
+        for bm0 in Slice(0, mm.m).blkslice(4)
+    ])
+
+    logger.warn(f'Reduction needs to be implemented!')
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
