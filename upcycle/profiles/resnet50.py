@@ -49,7 +49,7 @@ def resnet50_small_spatial(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    ops.Matmul(None, None, 1, Slice(2**12, 2**32), Slice(1, 128), Slice(1, 128), False, False))
+    ops.Matmul(None, None, 1, Slice(2**12, 2**32), Slice(1, 1024), Slice(1, 1024), False, False))
 def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -79,8 +79,8 @@ def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    ops.Matmul(None, None, 1, Slice(1, 128), Slice(1, 128), Slice(2**12, 2**32), True, True))
-def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
+    ops.Matmul(None, None, 1, Slice(1, 1024), Slice(1, 1024), Slice(2**12, 2**32), True, True))
+def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
     n = mm.n
