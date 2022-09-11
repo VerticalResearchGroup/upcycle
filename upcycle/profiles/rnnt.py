@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # Linear(dtype=Float16, train=False, l=1, m=2048, n=4096, k=1024, tr_a=False, tr_b=True)
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    ops.Linear(None, None, 1, Slice(1, 65536), 4096, 1024, False, True))
+    ops.Linear(None, None, 1, Slice(1, 65536), 4096, 1264, False, True))
 def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
