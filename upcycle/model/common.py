@@ -403,8 +403,8 @@ class Sim(SimBase):
             self.l1[tid].reset()
             step = tile_cur_step + i
 
-            if logger.isEnabledFor(logging.DEBUG) and tid == 0:
-                logger.debug(f'Tile 0: step={step} wi={wi}')
+            # if logger.isEnabledFor(logging.DEBUG) and tid == 0:
+            #     logger.debug(f'Tile 0: step={step} wi={wi}')
 
             if step not in self.dest_maps:
                 self.dest_maps[step] = c_model.DestList()

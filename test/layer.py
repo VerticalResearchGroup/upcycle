@@ -71,7 +71,6 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
 def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
     layers = []
     cache = {}
-    total_steps = sum(U.model.num_steps(arch, op) for op in app.oplist)
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
         t0 = time.perf_counter_ns()

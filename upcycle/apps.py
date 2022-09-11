@@ -61,7 +61,7 @@ class Trace:
 
             elif type(op) is ops.LstmCell:
                 self.oplist[i] = ops.LstmCell(
-                    op.dtype, op.train, op.n, op.s, op.d, op.h, False, False)
+                    op.dtype, op.train, op.n, op.d, op.h, False, False)
 
         bwd_list = []
         for op in reversed(self.oplist):
@@ -343,16 +343,16 @@ def rnnt_infer(dtype, n, il=239, ol=120):
 def rnnt_train(dtype, n, il=200, ol=200):
     return Trace(([
         # Encoder
-        ops.Lstm(dtype, True, n, 1, 240, 1024, False, False),
-        ops.Lstm(dtype, True, n, 1, 1024, 1024, False, False),
+        ops.LstmCell(dtype, True, n, 240, 1024, False, False),
+        ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
     ] * il) + ([
-        ops.Lstm(dtype, True, n, 1, 2048, 1024, False, False),
-        ops.Lstm(dtype, True, n, 1, 1024, 1024, False, False),
-        ops.Lstm(dtype, True, n, 1, 1024, 1024, False, False)
+        ops.LstmCell(dtype, True, n, 2048, 1024, False, False),
+        ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
+        ops.LstmCell(dtype, True, n, 1024, 1024, False, False)
     ] * (il // 2)) + ([
         # Decoder
-        ops.Lstm(dtype, True, n, 1, 320, 320, False, False),
-        ops.Lstm(dtype, True, n, 1, 320, 320, False, False),
+        ops.LstmCell(dtype, True, n, 320, 320, False, False),
+        ops.LstmCell(dtype, True, n, 320, 320, False, False),
         ops.Linear(dtype, True, 1, n, 1344, 512, False, False),
         ops.Linear(dtype, True, 1, n, 512, 28, False, False),
     ] * ol))
@@ -443,7 +443,7 @@ mlperf_v1_apps = {
     'ssdrn34-300': App(
         None, None,
         ssdrn34_300, Dtype.FP16,
-        BatchSizes(None, None, 1, 4)),
+        BatchSizes(None, None, 1, 16)),
     'ssdrn34-1200': App(
         ssdrn34_1200, Dtype.I8,
         None, None,

@@ -8,4 +8,4 @@ from .conv3d_di import Conv3DDi
 from .conv3d_dw import Conv3DDw
 from .lstm import LstmCell
 from .embed import Embedding
-
+from .reduce import Reduce
