@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    ops.Matmul(None, None, Slice(1, 1024), Slice(1, 1024), 178, 64, False, True))
+    ops.Matmul(None, None, Slice(1, 1024), Slice(1, 1024), 178, 64, None, None))
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    ops.Matmul(None, None, Slice(1, 1024), Slice(1, 1024), 64, 178, False, True))
+    ops.Matmul(None, None, Slice(1, 1024), Slice(1, 1024), 64, 178, None, None))
 def bert_l171_l172(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
