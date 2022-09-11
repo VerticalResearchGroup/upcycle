@@ -254,6 +254,7 @@ def place_op(arch : Arch, op : Operator, sim, check_flops=True):
 
     if check_flops and op.flops != sim.flops:
         logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+        logger.error(f'Offending op: {op}')
 
 
 @dataclass(frozen=True)
