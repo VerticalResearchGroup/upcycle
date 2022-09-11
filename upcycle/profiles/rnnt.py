@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
     ops.Linear(None, None, 1, Slice(1, 65536), 4096, 1264, False, True))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    ops.Linear(None, None, 1, Slice(1, 65536), 4096, 2048, False, True))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    ops.Linear(None, None, 1, Slice(1, 65536), 4096, 3072, False, True))
 def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     l = mm.l
     m = mm.m
@@ -46,6 +52,3 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
         for bl0 in Slice(0, mm.l).blkslice(1)
         for bm0 in Slice(0, mm.m).blkslice(32)
     ])
-
-
-
