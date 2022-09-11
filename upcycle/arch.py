@@ -209,7 +209,7 @@ class HierArch(Arch):
     @functools.lru_cache(maxsize=2048)
     def tid_to_gid(self, tid : int):
         r, c = self.tile_coords(tid)
-        return r // self.grows * self.gcols + c // self.gcols
+        return r // self.grows * self.groups_per_col + c // self.gcols
 
     @functools.lru_cache(maxsize=2048)
     def group_base_coords(self, gid):
@@ -245,6 +245,7 @@ class HierArch(Arch):
 
 def arch_cli_params(parser):
     parser.add_argument('-r', '--arch', type=str, default='hier')
+    parser.add_argument('-g', '--geom', type=str, default=None)
     parser.add_argument('--noc-ports', type=int, default=None)
     parser.add_argument('--l1', type=str, default=None)
     parser.add_argument('--l2', type=str, default=None)
@@ -268,6 +269,7 @@ def arch_factory(arch_name, kwargs):
     args = arch_cls.defaults.copy()
     keys = set(args.keys())
 
+    if kwargs['geom'] is not None: args['nrows'], args['ncols'] = map(int, kwargs['geom'].split(','))
     if kwargs['l1'] is not None: kwargs['l1'] = CacheParams.from_str(kwargs['l1'])
     if kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
     if kwargs['mapping'] is not None: kwargs['mapping'] = TileMapping.from_str(kwargs['mapping'])
