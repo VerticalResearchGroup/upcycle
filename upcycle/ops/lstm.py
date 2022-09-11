@@ -17,37 +17,23 @@ class LstmCell(Operator):
     tr_xh : bool
     tr_wu : bool
 
-    @property
-    def xt_w(self):
+    @functools.cached_property
+    def mm(self):
         return matmul.Linear(
             self.dtype,
             self.train,
             1,
             self.n,
             self.h * 4,
-            self.d,
+            self.d + self.h,
             self.tr_xh,
             self.tr_wu)
 
     @property
-    def ht_u(self):
-        return matmul.Linear(
-            self.dtype,
-            self.train,
-            1,
-            self.n,
-            self.h * 4,
-            self.h,
-            self.tr_xh,
-            self.tr_wu)
+    def flops(self): return self.mm.flops
 
     @property
-    def flops(self):
-        return self.xt_w.flops + self.ht_u.flops
-
-    @property
-    def total_load_bytes(self):
-        return self.xt_w.total_load_bytes + self.ht_u.total_load_bytes
+    def total_load_bytes(self): return self.mm.total_load_bytes
 
 @dataclass(frozen=True)
 class LstmCellBackend(M.WorkItem):
@@ -67,8 +53,7 @@ class LstmCellBackend(M.WorkItem):
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], LstmCell)
 def place_lstm_default(arch : Arch, lstm : LstmCell, sim : M.SimBase):
-    M.place_op(arch, lstm.xt_w, sim, check_flops=False)
-    M.place_op(arch, lstm.ht_u, sim, check_flops=False)
+    M.place_op(arch, lstm.mm, sim, check_flops=False)
     sim.barrier()
 
     sim.map2d_place([
