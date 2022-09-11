@@ -9,9 +9,9 @@ PAR=${PAR:-40}
 for APP in $APPS; do
     for PORT in $PORTS; do
         for ARCH in $ARCHS; do
-            python -OO test/app.py -i -a $APP -b online -p$PAR --noc-ports=$PORT -r $ARCH
+            python -OO scripts/app -i -a $APP -b online -p$PAR --noc-ports=$PORT -r $ARCH
             echo ""
-            python -OO test/app.py -i -a $APP -b offline -p$PAR --noc-ports=$PORT -r $ARCH
+            python -OO scripts/app -i -a $APP -b offline -p$PAR --noc-ports=$PORT -r $ARCH
             echo ""
         done
     done
