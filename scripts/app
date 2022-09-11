@@ -42,10 +42,10 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     logger.debug(f'Finished {op}')
     return result
 
-def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, time_ns=None, details=True):
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, count):
     gops = int(op.flops / result.cycles * arch.freq / 1e12)
     eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
-    cyc_frac = np.round(result.cycles / total_cyc * 100, 2)
+    cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
     logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
 def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
@@ -80,10 +80,19 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
     for op in app.oplist: total_cyc += cache[op].cycles
 
     layers = []
+    counts : dict[U.Operator, int] = dict()
+    ids : dict[U.Operator, int] = dict()
     for i, op in enumerate(app.oplist):
         result = cache[op]
         layers.append(result)
-        if verbose: log_layer(arch, dtype, app, i, op, result, total_cyc)
+
+        if op not in counts: counts[op] = 1
+        else: counts[op] += 1
+
+        if op not in ids: ids[op] = i
+
+    for op, count in counts.items():
+        log_layer(arch, dtype, app, ids[op], op, cache[op], total_cyc, count)
 
     return tt1 - tt0, layers
 
