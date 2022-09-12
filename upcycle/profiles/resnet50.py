@@ -115,7 +115,7 @@ def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2DDw(None, None, None, None, None, None, None, None, None, 3, 3, None, None, None, None))
 def place_conv2d_dw_3x3(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
-    tdi, tw, tdo = ops.conv2d.make_conv2d_tensors(arch, conv)
+    ti, tdw, tdo = ops.conv2d.make_conv2d_tensors(arch, conv)
     tile = ops.conv2d_dw.Conv2DDwTile
     assert conv.dtype == Dtype.FP16
     assert conv.tr_w == False
@@ -124,7 +124,7 @@ def place_conv2d_dw_3x3(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
         [
             [
                 tile(
-                    arch, conv, [tdo, tw], [tdi], False,
+                    arch, conv, [ti, tdo], [tdw], False,
                     ns, ps, qs, br0, bs0, ks, cs)
 
                 for ns in bn1.subslice(tile.tn)
@@ -142,11 +142,19 @@ def place_conv2d_dw_3x3(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
         for bk0 in Slice(0, conv.k).blkslice(2)
     ])
 
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        ops.Reduce(conv.dtype, False, 16, len(tdw)),
+        sim,
+        check_flops=False)
+
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2DDw(None, None, None, None, None, None, None, None, None, 7, 7, None, None, None, None))
 def place_conv2d_dw_7x7(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
-    tdi, tw, tdo = ops.conv2d.make_conv2d_tensors(arch, conv)
+    ti, tdw, tdo = ops.conv2d.make_conv2d_tensors(arch, conv)
     tile = ops.conv2d_dw.Conv2DDwTile
     assert conv.dtype == Dtype.FP16
     assert conv.tr_w == False
@@ -155,7 +163,7 @@ def place_conv2d_dw_7x7(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
         [
             [
                 tile(
-                    arch, conv, [tdo, tw], [tdi], False,
+                    arch, conv, [ti, tdo], [tdw], False,
                     ns, ps, qs, br0, bs0, ks, cs)
 
                 for ns in bn1.subslice(tile.tn)
@@ -172,3 +180,11 @@ def place_conv2d_dw_7x7(arch : Arch, conv : ops.Conv2DDw, sim : M.SimBase):
         for br0 in Slice(0, conv.r).blkslice(4)
         for bk0 in Slice(0, conv.k).blkslice(2)
     ])
+
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        ops.Reduce(conv.dtype, False, 16, len(tdw)),
+        sim,
+        check_flops=False)

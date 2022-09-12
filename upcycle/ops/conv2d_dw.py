@@ -8,6 +8,7 @@ from .common import *
 
 from . import matmul
 from .conv2d import Conv2D, make_conv2d_tensors
+from .reduce import Reduce
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,13 @@ def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
         for bk0 in Slice(0, conv.k).blkslice(16)
     ])
 
-    logger.warn(f'Reduction needs to be implemented!')
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        Reduce(conv.dtype, False, 16, len(tdw)),
+        sim,
+        check_flops=False)
 
 
 @M.register_placement(

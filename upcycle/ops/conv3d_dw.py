@@ -8,6 +8,7 @@ from .common import *
 
 from . import matmul
 from .conv3d import Conv3D, make_conv3d_tensors
+from .reduce import Reduce
 
 logger = logging.getLogger(__name__)
 
@@ -160,3 +161,10 @@ def place_conv3d_dw_default(arch : Arch, conv : Conv3DDw, sim : M.SimBase):
         for bk0 in Slice(0, conv.k).blkslice(16)
     ])
 
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        Reduce(conv.dtype, False, 16, len(tdw)),
+        sim,
+        check_flops=False)

@@ -151,6 +151,11 @@ class Tensor:
         if USE_C_TRACE: return self.c_trace(_idx)
         else: return self.py_trace(_idx)
 
+    @functools.cached_property
+    def _num_elems(self): return np.prod(self.shape)
+
+    def __len__(self): return self._num_elems
+
 @dataclass(frozen=True)
 class WorkItem:
     """Base class for all workitems."""

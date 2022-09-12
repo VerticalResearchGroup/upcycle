@@ -29,17 +29,17 @@ class ReduceTile(M.WorkItem):
 
     @property
     def read_trace(self):
-        yield
         return
+        yield
 
     @property
     def write_trace(self):
-        if self.write: yield from self.c[self.li, self.ms, self.ns]
-
+        return
+        yield
 
     @property
     def exec_lat(self):
-        return len(self.ns) * cld(len(self.ms), self.arch.vlen(self.dtype))
+        return len(self.ns) * cld(len(self.ms), self.arch.vlen(self.op.dtype))
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle], Reduce)
