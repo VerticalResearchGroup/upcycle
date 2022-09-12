@@ -109,7 +109,13 @@ def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
         for bm0 in Slice(0, mm.m).blkslice(4)
     ])
 
-    logger.warn(f'Reduction needs to be implemented!')
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        ops.Reduce(mm.dtype, False, 64, len(c)),
+        sim,
+        check_flops=False)
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
