@@ -1,20 +1,18 @@
 #!/bin/bash
 
 # set -x
-APPS=${APPS:-resnet50 bert-large-512 ssdrn34-300}
-LS=${LS:-32}
-PORTS=${PORTS:-1 2}
-ARCHS=${ARCH:-oracle bg}
+APPS=${APPS:-resnet50 ssdrn34-300 unet bert-large-pretrain rnnt dlrm}
+PORTS=${PORTS:-1}
+ARCHS=${ARCHS:-hier}
+PAR=${PAR:-40}
 
 for APP in $APPS; do
-    for LS in $LS; do
-        for PORT in $PORTS; do
-            for ARCH in $ARCHS; do
-                python -OO test/app.py -t -a $APP -b small --line-size=$LS -p16 --noc-ports=$PORT -r $ARCH
-                echo ""
-                python -OO test/app.py -t -a $APP -b large --line-size=$LS -p16 --noc-ports=$PORT -r $ARCH
-                echo ""
-            done
+    for PORT in $PORTS; do
+        for ARCH in $ARCHS; do
+            python -OO scripts/app -t -a $APP -b small -p$PAR --noc-ports=$PORT -r $ARCH
+            echo ""
+            python -OO scripts/app -t -a $APP -b large -p$PAR --noc-ports=$PORT -r $ARCH
+            echo ""
         done
     done
 done
