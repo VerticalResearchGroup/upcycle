@@ -13,19 +13,13 @@ logger = logging.getLogger(__name__)
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2D(None, None, None, 150, 150, 256, 150, 150, 256, 3, 3, 1, None, None))
 def place_ssdrn34_l17(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
-    ti, tw, to = ops.conv2d.make_conv2d_tensors(arch, conv)
-
-    tile = {
-        (Dtype.I8, False): ops.conv2d.Conv2DTileI8,
-        (Dtype.I8, True): ops.conv2d.Conv2DTileI8TW,
-        (Dtype.FP16, False): ops.conv2d.Conv2DTileFP16,
-        (Dtype.FP16, True): ops.conv2d.Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    ins, outs = conv.make_tensors(arch)
+    tile = ops.conv2d.choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                tile(arch, conv, [ti, tw], [to], False, ni, bp1, bq1, bc1, bk2)
+                tile(arch, conv, ins, outs, False, ni, bp1, bq1, bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp)
                 for bq1 in bq0.subslice(tile.tq)
                 for ni in bn0.indices
@@ -44,19 +38,13 @@ def place_ssdrn34_l17(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2D(None, None, 1, 150, 150, 256, 150, 150, 256, 3, 3, 1, None, None))
 def place_ssdrn34_l17_b1(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
-    ti, tw, to = ops.conv2d.make_conv2d_tensors(arch, conv)
-
-    tile = {
-        (Dtype.I8, False): ops.conv2d.Conv2DTileI8,
-        (Dtype.I8, True): ops.conv2d.Conv2DTileI8TW,
-        (Dtype.FP16, False): ops.conv2d.Conv2DTileFP16,
-        (Dtype.FP16, True): ops.conv2d.Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    ins, outs = conv.make_tensors(arch)
+    tile = ops.conv2d.choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                tile(arch, conv, [ti, tw], [to], False, ni, bp1, bq1, bc1, bk2)
+                tile(arch, conv, ins, outs, False, ni, bp1, bq1, bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp)
                 for bq1 in bq0.subslice(tile.tq)
                 for ni in bn0.indices
@@ -75,19 +63,13 @@ def place_ssdrn34_l17_b1(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2D(None, None, 16, 38, 38, 256, 38, 38, 256, 3, 3, 1, None, None, False))
 def place_ssdrn34_300_l17_b16(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
-    ti, tw, to = ops.conv2d.make_conv2d_tensors(arch, conv)
-
-    tile = {
-        (Dtype.I8, False): ops.conv2d.Conv2DTileI8,
-        (Dtype.I8, True): ops.conv2d.Conv2DTileI8TW,
-        (Dtype.FP16, False): ops.conv2d.Conv2DTileFP16,
-        (Dtype.FP16, True): ops.conv2d.Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    ins, outs = conv.make_tensors(arch)
+    tile = ops.conv2d.choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                tile(arch, conv, [ti, tw], [to], False, ni, bp1, bq1, bc1, bk2)
+                tile(arch, conv, ins, outs, False, ni, bp1, bq1, bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp)
                 for bq1 in bq0.subslice(tile.tq * 2)
                 for ni in bn1.indices
@@ -108,19 +90,13 @@ def place_ssdrn34_300_l17_b16(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
     [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv2D(None, None, 16, 38, 38, 256, 38, 38, 256, 3, 3, 1, None, None, True))
 def place_ssdrn34_300_l95_b16(arch : Arch, conv : ops.Conv2D, sim : M.SimBase):
-    ti, tw, to = ops.conv2d.make_conv2d_tensors(arch, conv)
-
-    tile = {
-        (Dtype.I8, False): ops.conv2d.Conv2DTileI8,
-        (Dtype.I8, True): ops.conv2d.Conv2DTileI8TW,
-        (Dtype.FP16, False): ops.conv2d.Conv2DTileFP16,
-        (Dtype.FP16, True): ops.conv2d.Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    ins, outs = conv.make_tensors(arch)
+    tile = ops.conv2d.choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                tile(arch, conv, [ti, tw], [to], False, ni, bp1, bq1, bc1, bk2)
+                tile(arch, conv, ins, outs, False, ni, bp1, bq1, bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp)
                 for bq1 in bq0.subslice(tile.tq * 2)
                 for ni in bn1.indices

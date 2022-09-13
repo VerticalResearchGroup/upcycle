@@ -7,7 +7,7 @@ from ..common import *
 from .common import *
 
 from . import matmul
-from .conv2d import Conv2D, make_conv2d_tensors
+from .conv2d import Conv2D
 from .reduce import Reduce
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,10 @@ class Conv2DDw(Conv2D):
     @staticmethod
     def from_forward(c : Conv2D):
         return Conv2DDw(c.dtype, False, c.n, c.h, c.w, c.c, c.p, c.q, c.k, c.r, c.s, c.stride, c.pad, c.tr_w)
+
+    def make_tensors(self, arch : Arch):
+        [ti, tdw], [tdo] = super().make_tensors(arch)
+        return [ti, tdo], [tdw]
 
 @dataclass(frozen=True)
 class Conv2DDwTile(M.WorkItem):
@@ -122,32 +126,35 @@ class Conv2DDwTile(M.WorkItem):
         lat = max(num_loads / self.arch.l1.rports, exec_cyc)
         return lat
 
+def choose_tile(op : Conv2DDw):
+    assert op.dtype == Dtype.FP16
+    assert op.tr_w == False
+    return Conv2DDwTile
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2DDw)
 def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
-    ti, tdw, tdo = make_conv2d_tensors(arch, conv)
-
-    assert conv.dtype == Dtype.FP16
-    assert conv.tr_w == False
+    ins, outs = conv.make_tensors(arch)
+    tile = choose_tile(conv)
+    rnblk, cnblk = blk2d(conv.n)
 
     sim.map2d_place([
         [
             [
-                Conv2DDwTile(
-                    arch, conv, [ti, tdo], [tdw], False,
+                tile(
+                    arch, conv, ins, outs, False,
                     ns, ps, qs, br0, bs0, ks, cs)
 
-                for ns in bn1.subslice(Conv2DDwTile.tn)
-                for ps in Slice(0, conv.p).subslice(Conv2DDwTile.tp)
-                for qs in Slice(0, conv.q).subslice(Conv2DDwTile.tq)
-                for cs in Slice(0, conv.c).subslice(Conv2DDwTile.tc)
-                for ks in bk1.subslice(Conv2DDwTile.tk)
+                for ns in bn1.subslice(tile.tn)
+                for ps in Slice(0, conv.p).subslice(tile.tp)
+                for qs in Slice(0, conv.q).subslice(tile.tq)
+                for cs in Slice(0, conv.c).subslice(tile.tc)
+                for ks in bk1.subslice(tile.tk)
             ]
-            for bn1 in bn0.blkslice(4)
+            for bn1 in bn0.blkslice(cnblk)
             for bs0 in Slice(0, conv.s).subslice(1)
             for bk1 in bk0.blkslice(16)
         ]
-        for bn0 in Slice(0, conv.n).blkslice(4)
+        for bn0 in Slice(0, conv.n).blkslice(rnblk)
         for br0 in Slice(0, conv.r).subslice(1)
         for bk0 in Slice(0, conv.k).blkslice(16)
     ])
@@ -156,7 +163,7 @@ def place_conv2d_dw_default(arch : Arch, conv : Conv2DDw, sim : M.SimBase):
 
     M.place_op(
         arch,
-        Reduce(conv.dtype, False, 16, len(tdw)),
+        Reduce(conv.dtype, False, rnblk * cnblk, len(outs[0])),
         sim,
         check_flops=False)
 

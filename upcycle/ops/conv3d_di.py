@@ -7,7 +7,7 @@ from ..common import *
 from .common import *
 
 from . import matmul
-from .conv3d import Conv3D, make_conv3d_tensors
+from .conv3d import Conv3D
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,10 @@ class Conv3DDi(Conv3D):
     @staticmethod
     def from_forward(c : Conv3D):
         return Conv3DDi(c.dtype, False, c.n, c.h, c.w, c.d, c.c, c.p, c.q, c.o, c.k, c.r, c.s, c.t, c.stride, c.pad, c.tr_w)
+
+    def make_tensors(self, arch : Arch):
+        [tdi, tw], [tdo] = super().make_tensors(arch)
+        return [tdo, tw], [tdi]
 
 @dataclass(frozen=True)
 class Conv3DDiTile(M.WorkItem):
@@ -158,33 +162,32 @@ class Conv3DDiTile(M.WorkItem):
         lat = max(num_loads / self.arch.l1.rports, exec_cyc)
         return lat
 
-@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv3DDi)
-def place_conv2d_di_default(arch : Arch, conv : Conv3DDi, sim : M.SimBase):
-    tdi, tw, tdo = make_conv3d_tensors(arch, conv)
+def choose_tile(op : Conv3DDi):
+    assert op.dtype == Dtype.FP16
+    assert op.tr_w == False
+    return Conv3DDiTile
 
-    assert conv.dtype == Dtype.FP16
-    assert conv.tr_w == False
-    pad = conv.pad
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv3DDi)
+def place_conv3ddi_default(arch : Arch, conv : Conv3DDi, sim : M.SimBase):
+    ins, outs = conv.make_tensors(arch)
+    tile = choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                Conv3DDiTile(
-                    arch, conv, [tdo, tw], [tdi], False,
-                    ns, hs, ws, ds, ks, cs)
-
+                tile(arch, conv, ins, outs, False, ns, hs, ws, ds, ks, cs)
                 for ns in bn1.subslice(1)
                 for hs in bh0.subslice(conv.stride)
                 for ws in bw0.subslice(conv.stride)
                 for ds in Slice(0, conv.d).subslice(conv.stride)
-                for cs in Slice(0, conv.c).subslice(Conv3DDiTile.tc * 2)
-                for ks in Slice(0, conv.k).subslice(Conv3DDiTile.tk * 4)
+                for cs in Slice(0, conv.c).subslice(tile.tc * 2)
+                for ks in Slice(0, conv.k).subslice(tile.tk * 4)
             ]
             for bn1 in bn0.blkslice(2)
-            for bw0 in Slice(pad, conv.w + pad).blkslice(arch.ncols // 2)
+            for bw0 in Slice(conv.pad, conv.w + conv.pad).blkslice(arch.ncols // 2)
         ]
         for bn0 in Slice(0, conv.n).blkslice(2)
-        for bh0 in Slice(pad, conv.h + pad).blkslice(arch.nrows // 2)
+        for bh0 in Slice(conv.pad, conv.h + conv.pad).blkslice(arch.nrows // 2)
     ])
 
 @M.register_placement(

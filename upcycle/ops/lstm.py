@@ -35,6 +35,8 @@ class LstmCell(Operator):
     @property
     def total_load_bytes(self): return self.mm.total_load_bytes
 
+    def make_tensors(self, arch): return [], []
+
 @dataclass(frozen=True)
 class LstmCellBackend(M.WorkItem):
     @property
@@ -53,12 +55,14 @@ class LstmCellBackend(M.WorkItem):
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], LstmCell)
 def place_lstm_default(arch : Arch, lstm : LstmCell, sim : M.SimBase):
+    ins, outs = lstm.make_tensors(arch)
+
     M.place_op(arch, lstm.mm, sim, check_flops=False)
     sim.barrier()
 
     sim.map2d_place([
         [
-            [ LstmCellBackend(arch, lstm, [], []) ]
+            [ LstmCellBackend(arch, lstm, ins, outs) ]
             for col in range(arch.ncols)
         ]
         for row in range(arch.nrows)

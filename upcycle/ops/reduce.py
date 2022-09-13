@@ -18,6 +18,7 @@ class Reduce(Operator):
     @property
     def total_load_bytes(self): return self.n * self.m * Dtype.sizeof(self.dtype)
 
+    def make_tensors(self, arch): return [], []
 
 @dataclass(frozen=True)
 class ReduceTile(M.WorkItem):
@@ -50,10 +51,12 @@ def place_reduction_default(arch : Arch, r : Reduce, sim : M.SimBase):
     # can happen entirely inside each tile with absolutely no LLC <-> L1/L2
     # traffic.
 
+    ins, outs = r.make_tensors(arch)
+
     sim.map2d_place([
         [
             [
-                ReduceTile(arch, r, [], [], ns, bm1)
+                ReduceTile(arch, r, ins, outs, ns, bm1)
                 for ns in Slice(0, r.n).blkslice(1)
             ]
             for bm1 in bm0.blkslice(64)

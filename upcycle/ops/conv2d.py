@@ -58,6 +58,23 @@ class Conv2D(Operator):
             self.r * self.s * self.k * self.c) * \
             Dtype.sizeof(self.dtype)
 
+    def make_tensors(self, arch : Arch):
+        ti = M.Tensor(
+            arch,
+            1,
+            self.dtype,
+            (self.n, self.h + 2 * self.pad, self.w + 2 * self.pad, self.c))
+
+        tw = M.Tensor(
+            arch,
+            2,
+            self.dtype,
+            (self.r, self.s, self.k, self.c) if not self.tr_w \
+                else (self.r, self.s, self.c, self.k))
+
+        to = M.Tensor(arch, 3, self.dtype, (self.n, self.p, self.q, self.k))
+        return [ti, tw], [to]
+
     def __repr__(self):
         return f'Conv2D(n={self.n}, i={self.h}x{self.w}x{self.c} w={self.r}x{self.s}x{self.k}x{self.c} o={self.p}x{self.q}x{self.k} by {self.stride})'
 
@@ -222,37 +239,22 @@ class Conv2DTileFP16TW(Conv2DTile):
             transpose=True,
             contig=self.op.stride == 1)
 
-def make_conv2d_tensors(arch : Arch, conv : Conv2D):
-    ti = M.Tensor(
-        arch,
-        1,
-        conv.dtype,
-        (conv.n, conv.h + 2 * conv.pad, conv.w + 2 * conv.pad, conv.c))
-
-    tw = M.Tensor(
-        arch,
-        2,
-        conv.dtype,
-        (conv.r, conv.s, conv.k, conv.c) if not conv.tr_w \
-            else (conv.r, conv.s, conv.c, conv.k))
-
-    to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.k))
-    return ti, tw, to
-
-@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2D)
-def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
-    ti, tw, to = make_conv2d_tensors(arch, conv)
-
-    tile = {
+def choose_tile(op : Conv2D):
+    return {
         (Dtype.I8, False): Conv2DTileI8,
         (Dtype.I8, True): Conv2DTileI8TW,
         (Dtype.FP16, False): Conv2DTileFP16,
         (Dtype.FP16, True): Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    }[(op.dtype, op.tr_w)]
+
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv2D)
+def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
+    ins, outs = conv.make_tensors(arch)
+    tile = choose_tile(conv)
 
     sim.flatmap_place([
         [
-            tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bc1, bk0)
+            tile(arch, conv, ins, outs, False, ni, bp0, bq0, bc1, bk0)
             for bc1 in bc0.subslice(tile.tc)
         ]
         for ni in Slice(0, conv.n).indices
@@ -264,19 +266,13 @@ def place_conv2d_default(arch : Arch, conv : Conv2D, sim : M.SimBase):
 
 @M.register_placement(CoarseOracle, Conv2D)
 def place_conv2d_coarse_arch(arch : CoarseOracle, conv : Conv2D, sim : M.SimBase):
-    ti, tw, to = make_conv2d_tensors(arch, conv)
-
-    tile = {
-        (Dtype.I8, False): Conv2DTileI8,
-        (Dtype.I8, True): Conv2DTileI8TW,
-        (Dtype.FP16, False): Conv2DTileFP16,
-        (Dtype.FP16, True): Conv2DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    ins, outs = conv.make_tensors(arch)
+    tile = choose_tile(conv)
 
     sim.map2d_place([
         [
             [
-                tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bc1, bk0)
+                tile(arch, conv, ins, outs, False, ni, bp0, bq0, bc1, bk0)
                 for bc1 in bc0.subslice(tile.tc)
             ]
             for bk0 in Slice(0, conv.k).subslice(tile.tk)

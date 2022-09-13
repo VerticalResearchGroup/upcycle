@@ -24,6 +24,16 @@ class Matmul(Operator):
         return (self.l * self.m * self.k + self.l * self.n * self.k) * \
             Dtype.sizeof(self.dtype)
 
+    def make_tensors(self, arch : Arch):
+        l = self.l
+        m = self.m
+        n = self.n
+        k = self.k
+        a = M.Tensor(arch, 1, self.dtype, (l, m, k) if not self.tr_a else (l, k, m))
+        b = M.Tensor(arch, 2, self.dtype, (l, k, n) if not self.tr_b else (l, n, k))
+        c = M.Tensor(arch, 3, self.dtype, (l, m, n))
+        return [a, b], [c]
+
 @operator
 @dataclass(frozen=True)
 @register_backward(Matmul)
@@ -332,32 +342,27 @@ class MatmulTileKMNKFP16(MatmulTile):
         yield from self.a[self.li, self.ks, self.ms]
         yield from self.b[self.li, self.ks, self.ns]
 
-@M.register_placement(
-    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
-    [Matmul, Linear])
-def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
-    l = mm.l
-    m = mm.m
-    n = mm.n
-    k = mm.k
-
-    a = M.Tensor(arch, 1, mm.dtype, (l, m, k) if not mm.tr_a else (l, k, m))
-    b = M.Tensor(arch, 2, mm.dtype, (l, k, n) if not mm.tr_b else (l, n, k))
-    c = M.Tensor(arch, 3, mm.dtype, (l, m, n))
-
-    tile = {
+def choose_tile(op : Matmul):
+    return {
         (False, False, Dtype.I8): MatmulTileMKKNI8,
         (False, True, Dtype.I8): MatmulTileMKNKI8,
         (False, False, Dtype.FP16): MatmulTileMKKNFP16,
         (False, True, Dtype.FP16): MatmulTileMKNKFP16,
         (True, False, Dtype.FP16): MatmulTileKMKNFP16,
         (True, True, Dtype.FP16): MatmulTileKMNKFP16,
-    }[(mm.tr_a, mm.tr_b, mm.dtype)]
+    }[(op.tr_a, op.tr_b, op.dtype)]
+
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch, CoarseOracle],
+    [Matmul, Linear])
+def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
+    ins, outs = mm.make_tensors(arch)
+    tile = choose_tile(mm)
 
     sim.map2d_place([
         [
             [
-                tile(arch, mm, [a, b], [c], False, li, bm1, bn1, bk1)
+                tile(arch, mm, ins, outs, False, li, bm1, bn1, bk1)
                 for li in Slice(0, mm.l).indices
                 for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
                 for bm1 in bm0.subslice(tile.tm * 4)

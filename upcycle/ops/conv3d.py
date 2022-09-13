@@ -62,6 +62,24 @@ class Conv3D(Operator):
     def __repr__(self):
         return f'Conv3D(n={self.n}, i={self.h}x{self.w}x{self.d}x{self.c} w={self.r}x{self.s}x{self.t}x{self.k}x{self.c} o={self.p}x{self.q}x{self.o}x{self.k} by {self.stride})'
 
+
+    def make_tensors(self, arch : Arch):
+        ti = M.Tensor(
+            arch,
+            1,
+            self.dtype,
+            (self.n, self.h + 2 * self.pad, self.w + 2 * self.pad, self.d + 2 * self.pad, self.c))
+
+        tw = M.Tensor(
+            arch,
+            2,
+            self.dtype,
+            (self.r, self.s, self.t, self.k, self.c) if not self.tr_w \
+                else (self.r, self.s, self.t, self.c, self.k))
+
+        to = M.Tensor(arch, 3, self.dtype, (self.n, self.p, self.q, self.o, self.k))
+        return [ti, tw], [to]
+
 @dataclass(frozen=True)
 class Conv3DTile(M.WorkItem):
     write : bool
@@ -231,37 +249,22 @@ class Conv3DTileFP16TW(Conv3DTile):
             transpose=True,
             contig=self.op.stride == 1)
 
-def make_conv3d_tensors(arch : Arch, conv : Conv3D):
-    ti = M.Tensor(
-        arch,
-        1,
-        conv.dtype,
-        (conv.n, conv.h + 2 * conv.pad, conv.w + 2 * conv.pad, conv.d + 2 * conv.pad, conv.c))
-
-    tw = M.Tensor(
-        arch,
-        2,
-        conv.dtype,
-        (conv.r, conv.s, conv.t, conv.k, conv.c) if not conv.tr_w \
-            else (conv.r, conv.s, conv.t, conv.c, conv.k))
-
-    to = M.Tensor(arch, 3, conv.dtype, (conv.n, conv.p, conv.q, conv.o, conv.k))
-    return ti, tw, to
-
-@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv3D)
-def place_conv3d_default(arch : Arch, conv : Conv3D, sim : M.SimBase):
-    ti, tw, to = make_conv3d_tensors(arch, conv)
-
-    tile = {
+def choose_tile(op : Conv3D):
+    return {
         (Dtype.I8, False): Conv3DTileI8,
         (Dtype.I8, True): Conv3DTileI8TW,
         (Dtype.FP16, False): Conv3DTileFP16,
         (Dtype.FP16, True): Conv3DTileFP16TW,
-    }[(conv.dtype, conv.tr_w)]
+    }[(op.dtype, op.tr_w)]
+
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], Conv3D)
+def place_conv3d_default(arch : Arch, conv : Conv3D, sim : M.SimBase):
+    ins, outs = conv.make_tensors(arch)
+    tile = choose_tile(conv)
 
     sim.flatmap_place([
         [
-            tile(arch, conv, [ti, tw], [to], False, ni, bp0, bq0, bo0, bc1, bk0)
+            tile(arch, conv, ins, outs, False, ni, bp0, bq0, bo0, bc1, bk0)
             for bc1 in bc0.subslice(tile.tc)
         ]
         for ni in Slice(0, conv.n).indices

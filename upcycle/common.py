@@ -127,6 +127,20 @@ def cld(n : int, d : int):
     """Ceiling-divide."""
     return (n // d) + (1 if n % d > 0 else 0)
 
+def blk2d(n : int):
+    i = 1
+    while i <= n and i < 64: i <<= 1
+
+    return {
+        1: (1, 1),
+        2: (1, 2),
+        4: (2, 2),
+        8: (2, 4),
+        16: (4, 4),
+        32: (4, 8),
+        64: (8, 8),
+    }[i]
+
 class Dtype(IntEnum):
     """Enum for the different data types supported by UPCYCLE."""
     I8 = 1
@@ -164,10 +178,12 @@ class Operator:
     train : bool
 
     @property
-    def flops(self): raise NotImplementedError()
+    def flops(self) -> int: raise NotImplementedError()
 
     @property
-    def total_load_bytes(self): raise NotImplementedError()
+    def total_load_bytes(self) -> int: raise NotImplementedError()
 
     @property
-    def ami(self): return self.flops / self.total_load_bytes
+    def ami(self) -> float: return self.flops / self.total_load_bytes
+
+    def make_tensors(self, arch) -> tuple[list, list]: raise NotImplementedError()
