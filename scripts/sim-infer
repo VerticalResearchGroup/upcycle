@@ -4,7 +4,7 @@
 APPS=${APPS:-resnet50 ssdrn34-1200 unet bert-large-squad rnnt dlrm}
 PORTS=${PORTS:-1}
 ARCHS=${ARCHS:-hier}
-PAR=${PAR:-40}
+PAR=${PAR:-8}
 
 for APP in $APPS; do
     for PORT in $PORTS; do

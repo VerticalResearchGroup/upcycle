@@ -350,3 +350,147 @@ void oracle_traffic(
     }
 }
 
+template<uint64_t NR, uint64_t NC>
+void count_multiroute(
+    const std::pair<size_t, size_t>& src,
+    const std::vector<size_t>& dests,
+    py::array_t<uint32_t> traffic,
+    size_t n)
+{
+    std::set<std::tuple<size_t, size_t, size_t>> hops;
+    // auto r = traffic.mutable_unchecked();
+
+    for (const auto& tid : dests) {
+        const std::pair<size_t, size_t> dst = {tid / NC, tid % NC};
+        assert(dst.first < NR);
+        assert(dst.second < NC);
+        get_hops(src, dst, hops);
+    }
+
+    for (const auto& hop : hops) {
+        // std::cout << "hop: " << std::get<0>(hop) << ", " << std::get<1>(hop) << ", " << std::get<2>(hop)  << ", " << n << std::endl;
+        traffic.mutable_at(std::get<0>(hop), std::get<1>(hop), std::get<2>(hop)) += n;
+    }
+}
+
+template<uint64_t NR, uint64_t NC, uint64_t GR, uint64_t GC>
+inline uint64_t _hier_groups_per_col() {
+    return NC / GC;
+}
+
+template<uint64_t NR, uint64_t NC, uint64_t GR, uint64_t GC>
+inline uint64_t _hier_tid_to_gid(size_t tid) {
+    const uint64_t r = tid / NC;
+    const uint64_t c = tid % NC;
+    const uint64_t gr = r / GR;
+    const uint64_t gc = c / GC;
+    return gr * _hier_groups_per_col<NR, NC, GR, GC>() + gc;
+}
+
+template<uint64_t LB, uint64_t NR, uint64_t NC, uint64_t GR, uint64_t GC>
+inline std::pair<size_t, size_t> _hier_l2_addr_coords(uint64_t addr, size_t gid) {
+    const uint64_t gr = gid / _hier_groups_per_col<NR, NC, GR, GC>();
+    const uint64_t gc = gid % _hier_groups_per_col<NR, NC, GR, GC>();
+    const uint64_t gbr = gr * GR;
+    const uint64_t gbc = gc * GC;
+    const uint64_t gtid = (addr >> LB)  & (GR * GC - 1);
+    return {gbr + gtid / GC, gbc + gtid % GC};
+}
+
+template<uint64_t LB, uint64_t NR, uint64_t NC>
+inline std::pair<size_t, size_t> _hier_llc_addr_coords(uint64_t addr) {
+    const size_t tid = (addr >> LB) & ((NR * NC) - 1);
+    return {tid / NC, tid % NC};
+}
+
+template<uint64_t LB, uint64_t NR, uint64_t NC, uint64_t GR, uint64_t GC>
+void _hier_traffic(const DestList& dl, py::array_t<uint32_t> traffic, std::vector<Cache>& l2, size_t n) {
+    const size_t nrows = traffic.shape(0);
+    const size_t ncols = traffic.shape(1);
+    const size_t ndirs = traffic.shape(2);
+    assert(nrows == NR);
+    assert(ncols == NC);
+    assert(ndirs == DIRMAX);
+
+
+    DestList l2dl;
+
+    for (const auto& kv : dl.dests) {
+        const auto& addr = kv.first;
+        const auto& mask = kv.second;
+        std::map<int, std::vector<size_t>> groups;
+
+        for (const auto& tid : mask.tiles()) {
+            const int gid = _hier_tid_to_gid<NR, NC, GR, GC>(tid);
+            groups[gid].push_back(tid);
+        }
+
+        for (const auto& kv : groups) {
+            const int gid = kv.first;
+            const auto& tids = kv.second;
+            const auto& coords = _hier_l2_addr_coords<LB, NR, NC, GR, GC>(addr, gid);
+            const size_t l2tid = coords.first * NC + coords.second;
+            const bool hit = l2[gid].lookup(addr);
+            l2[gid].insert(addr);
+            if (!hit) { l2dl.set(addr, l2tid); }
+
+            count_multiroute<NR, NC>(coords, tids, traffic, n);
+        }
+
+    }
+
+
+    for (const auto& kv : l2dl.dests) {
+        const auto& addr = kv.first;
+        const auto& mask = kv.second;
+        const auto coords = _hier_llc_addr_coords<LB, NR, NC>(addr);
+        count_multiroute<NR, NC>(coords, mask.tiles(), traffic, n);
+    }
+
+}
+
+
+void hier_traffic(
+    uint64_t lbits,
+    uint64_t nrows,
+    uint64_t ncols,
+    uint64_t grows,
+    uint64_t gcols,
+    const DestList& dl,
+    py::array_t<uint32_t> traffic,
+    std::vector<Cache>& l2,
+    size_t n)
+{
+#define SUPPORT_ARCH(lb, nr, nc, gr, gc) \
+    case (nr << 48) | (nc << 32) | (gr << 16) | (gc << 0): \
+        _hier_traffic<lb, nr, nc, gr, gc>(dl, traffic, l2, n); \
+        break;
+
+    uint64_t packed_tile_spec =
+        (nrows << 48) |
+        (ncols << 32) |
+        (grows << 16) |
+        (gcols << 0);
+
+    switch (lbits) {
+    case 5:
+        switch (packed_tile_spec) {
+            SUPPORT_ARCH(5ULL, 32ULL, 64ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(5ULL, 16ULL, 32ULL, 4ULL, 8ULL);
+        default:
+            throw std::runtime_error("Unsupported arch config (LB = 5)");
+        }
+        break;
+    case 6:
+        switch (packed_tile_spec) {
+            SUPPORT_ARCH(6ULL, 32ULL, 64ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(6ULL, 16ULL, 32ULL, 4ULL, 8ULL);
+        default:
+            throw std::runtime_error("Unsupported arch config (LB = 6)");
+        }
+        break;
+    default:
+        throw std::runtime_error("Unsupported arch config (LB != 5, 6)");
+    }
+}
+

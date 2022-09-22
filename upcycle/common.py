@@ -127,9 +127,9 @@ def cld(n : int, d : int):
     """Ceiling-divide."""
     return (n // d) + (1 if n % d > 0 else 0)
 
-def blk2d(n : int):
+def blk2d(n : int, max=64):
     i = 1
-    while i <= n and i < 64: i <<= 1
+    while i <= n and i < max: i <<= 1
 
     return {
         1: (1, 1),

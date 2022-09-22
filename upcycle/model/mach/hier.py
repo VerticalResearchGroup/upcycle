@@ -25,7 +25,7 @@ class HierSim(Sim):
             for _ in range(arch.ngroups)
         ]
 
-def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
+def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
     dest_map = sim.dest_maps.get(step, None)
     if dest_map is None: return
 
@@ -44,9 +44,10 @@ def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : 
             groups[gid].append(tid)
 
         for gid, tids in groups.items():
+            if len(tids) == 0: continue
             hit = sim.l2[gid].lookup(l)
             sim.l2[gid].insert(l)
-            if not hit: l2_dl.set(l, gid)
+            if not hit: l2_dl.set(l, arch.addr_l2_tid(l, gid))
 
             net.count_multiroute(
                 arch.addr_l2_coords(l, gid),
@@ -72,7 +73,33 @@ def simulate_hier_oracle_noc(arch : HierArch, kwstats : dict, step : int, sim : 
 
     return traffic
 
+
+def simulate_hier_noc2(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
+    dest_map = sim.dest_maps.get(step, None)
+    if dest_map is None: return
+
+    t0 = time.perf_counter()
+    traffic = noc.zero_traffic(arch)
+
+    c_model.hier_traffic(
+        arch.l1.lbits((arch.line_size)),
+        arch.nrows, arch.ncols,
+        arch.grows, arch.gcols,
+        dest_map,
+        traffic,
+        sim.l2,
+        2 if arch.line_size == 64 else 1)
+
+    # print(traffic)
+
+    t1 = time.perf_counter()
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f'+ Noc simulation took {t1 - t0}s')
+
+    return traffic
+
 @register_sim(HierArch)
 def hier_sim(arch : HierArch, op : Operator, *args, **kwargs):
     return common_sim(
-        arch, op, *args, ex_sim_cls=HierSim, noc_sim_func=simulate_hier_oracle_noc, **kwargs)
+        arch, op, *args, ex_sim_cls=HierSim, noc_sim_func=simulate_hier_noc2, **kwargs)

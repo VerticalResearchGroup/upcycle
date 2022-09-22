@@ -68,7 +68,12 @@ def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
     tile = ops.matmul.choose_tile(mm)
-    rkblk, ckblk = blk2d(mm.k)
+
+    rkblk = 1
+    while rkblk * cld(mm.m, tile.tm) < 32: rkblk <<= 1
+
+    ckblk = 1
+    while ckblk * cld(mm.n, tile.tn) < 64: ckblk <<= 1
 
     sim.map2d_place([
         [
@@ -79,11 +84,11 @@ def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
                 for bm1 in bm0.subslice(tile.tm * 4)
                 for bn1 in bn0.subslice(tile.tn * 4)
             ]
-            for bk1 in bk0.blkslice(8)
-            for bn0 in Slice(0, mm.n).blkslice(ckblk)
+            for bk1 in bk0.blkslice(ckblk)
+            for bn0 in Slice(0, mm.n).blkslice(cld(mm.n, tile.tn))
         ]
         for bk0 in Slice(0, mm.k).blkslice(rkblk)
-        for bm0 in Slice(0, mm.m).blkslice(4)
+        for bm0 in Slice(0, mm.m).blkslice(cld(mm.m, tile.tm))
     ])
 
     sim.barrier()

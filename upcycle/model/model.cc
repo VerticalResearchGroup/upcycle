@@ -42,4 +42,6 @@ PYBIND11_MODULE(c_model, m) {
 
     m.def("tile_read_trace", &tile_read_trace);
     m.def("oracle_traffic", &oracle_traffic);
+    m.def("hier_traffic", &hier_traffic);
+
 }

@@ -6,3 +6,4 @@ build
 dist
 .nfs*
 .vscode
+*.txt

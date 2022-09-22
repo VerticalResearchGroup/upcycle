@@ -258,8 +258,12 @@ def place_op(arch : Arch, op : Operator, sim, check_flops=True):
     func(arch, op, sim)
 
     if check_flops and op.flops != sim.flops:
-        logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
-        logger.error(f'Offending op: {op}')
+        if np.abs(sim.flops / op.flops - 1) < 0.05:
+            logger.warn(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+            logger.warn(f'Offending op: {op}')
+        else:
+            logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+            logger.error(f'Offending op: {op}')
 
 
 @dataclass(frozen=True)

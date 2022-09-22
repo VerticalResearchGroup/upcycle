@@ -151,17 +151,17 @@ def place_conv3d_dw_default(arch : Arch, conv : Conv3DDw, sim : M.SimBase):
                     arch, conv, ins, outs, False,
                     ns, ps, qs, os, br0, bs0, bt0, ks, cs)
 
-                for bt0 in Slice(0, conv.t).subslice(tile.to)
                 for ns in bn1.subslice(tile.tn)
                 for ps in Slice(0, conv.p).subslice(tile.tp)
                 for qs in Slice(0, conv.q).subslice(tile.tq)
-                for os in Slice(0, conv.o).subslice(tile.to)
+                for os in Slice(0, conv.o).subslice(tile.to * 4)
                 for cs in Slice(0, conv.c).subslice(tile.tc)
                 for ks in bk1.subslice(tile.tk)
             ]
             for bn1 in bn0.blkslice(cnblk)
             for bs0 in Slice(0, conv.s).subslice(1)
-            for bk1 in bk0.blkslice(16)
+            for bt0 in Slice(0, conv.t).subslice(1)
+            for bk1 in bk0.blkslice(8)
         ]
         for bn0 in Slice(0, conv.n).blkslice(rnblk)
         for br0 in Slice(0, conv.r).subslice(1)
@@ -175,3 +175,21 @@ def place_conv3d_dw_default(arch : Arch, conv : Conv3DDw, sim : M.SimBase):
         Reduce(conv.dtype, False, rnblk * cnblk, len(outs[0])),
         sim,
         check_flops=False)
+
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    Conv3DDw(None, None, None, None, None, None, None, None, None, None, None, 1, 1, 1, None, None, None))
+def place_conv3ddw_1x1x1(arch : Arch, conv : Conv3DDw, sim : M.SimBase):
+    # We observe in this case the convolution degenerates into a large matmul.
+    mm = matmul.MatmulDb.from_forward(matmul.Matmul(
+        conv.dtype,
+        conv.train,
+        1,
+        conv.n * conv.p * conv.q * conv.o,
+        conv.k,
+        conv.c,
+        False,
+        not conv.tr_w))
+
+    assert mm.flops == conv.flops
+    return M.place_op(arch, mm, sim, False)

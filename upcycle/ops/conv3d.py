@@ -172,7 +172,7 @@ class Conv3DTileFP16(Conv3DTile):
     tk = 16 # M
     tp = 1
     tq = 1
-    to = 4  # N
+    to = 1  # N
     tc = 32 # K
 
     def __post_init__(self):

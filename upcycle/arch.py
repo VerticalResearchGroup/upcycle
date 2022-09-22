@@ -225,6 +225,11 @@ class HierArch(Arch):
         r, c = br + (gtid // self.gcols), bc + (gtid % self.gcols)
         return r, c
 
+    @functools.lru_cache(maxsize=2048)
+    def addr_l2_tid(self, addr : int, gid : int):
+        r, c = self.addr_l2_coords(addr, gid)
+        return self.coords_tile(r, c)
+
     defaults = {
         'freq': 2.4e9,
         'vbits': 512,
