@@ -1,18 +1,19 @@
 #!/bin/bash
 
-# set -x
-APPS=${APPS:-resnet50 ssdrn34-1200 unet bert-large-squad rnnt dlrm}
-PORTS=${PORTS:-1}
-ARCHS=${ARCHS:-hier}
-PAR=${PAR:-8}
+set -x
+set -e
 
-for APP in $APPS; do
-    for PORT in $PORTS; do
-        for ARCH in $ARCHS; do
-            python -OO scripts/app -i -a $APP -b online -p$PAR --noc-ports=$PORT -r $ARCH
-            echo ""
-            python -OO scripts/app -i -a $APP -b offline -p$PAR --noc-ports=$PORT -r $ARCH
-            echo ""
-        done
-    done
-done
+python -OO scripts/app -i -a resnet50 -b online -p40
+python -OO scripts/app -i -a resnet50 -b offline -p40
+
+python -OO scripts/app -i -a ssdrn34-1200 -b online -p20
+python -OO scripts/app -i -a ssdrn34-1200 -b offline -p20
+
+python -OO scripts/app -i -a unet -b online -p6
+python -OO scripts/app -i -a unet -b offline -p6
+
+python -OO scripts/app -i -a bert-large-squad -b online -p20
+python -OO scripts/app -i -a bert-large-squad -b offline -p20
+
+python -OO scripts/app -i -a rnnt -b online -p20
+python -OO scripts/app -i -a rnnt -b offline -p20
