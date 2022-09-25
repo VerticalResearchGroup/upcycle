@@ -68,4 +68,42 @@ def place_lstm_default(arch : Arch, lstm : LstmCell, sim : M.SimBase):
         for row in range(arch.nrows)
     ])
 
+@operator
+@dataclass(frozen=True)
+@register_backward(LstmCell)
+class LstmCellBwd(LstmCell):
+    @staticmethod
+    def from_forward(lstm : LstmCell):
+        return LstmCell(lstm.dtype, False, lstm.n, lstm.d, lstm.h, lstm.tr_xh, lstm.tr_wu)
 
+    @property
+    def flops(self): return self.mm.flops * 2
+
+@M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], LstmCellBwd)
+def place_lstmbwd_default(arch : Arch, lstm : LstmCellBwd, sim : M.SimBase):
+    ins, outs = lstm.make_tensors(arch)
+
+    sim.map2d_place([
+        [
+            [
+                LstmCellBackend(arch, lstm, ins, outs),
+                LstmCellBackend(arch, lstm, ins, outs)
+            ]
+            for col in range(arch.ncols)
+        ]
+        for row in range(arch.nrows)
+    ])
+
+    sim.barrier()
+
+    M.place_op(
+        arch,
+        matmul.MatmulDa.from_forward(lstm.mm),
+        sim,
+        check_flops=False)
+
+    M.place_op(
+        arch,
+        matmul.MatmulDb.from_forward(lstm.mm),
+        sim,
+        check_flops=False)
