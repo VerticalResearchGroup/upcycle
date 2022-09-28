@@ -7,8 +7,8 @@ python -OO scripts/app $GEOM -t -a resnet50 -b online -p40
 python -OO scripts/app $GEOM -t -a resnet50 -b offline -p40
 python -OO scripts/app $GEOM -t -a ssdrn34-300 -b online -p20
 python -OO scripts/app $GEOM -t -a ssdrn34-300 -b offline -p20
-python -OO scripts/app $GEOM -t -a unet -b online -p6
-python -OO scripts/app $GEOM -t -a unet -b offline -p6
+python -OO scripts/app $GEOM -t -a unet -b online -p2
+python -OO scripts/app $GEOM -t -a unet -b offline -p1
 python -OO scripts/app $GEOM -t -a bert-large-pretrain -b online -p20
 python -OO scripts/app $GEOM -t -a bert-large-pretrain -b offline -p20
 python -OO scripts/app $GEOM -t -a rnnt -b online -p20
