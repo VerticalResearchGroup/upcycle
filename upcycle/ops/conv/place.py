@@ -107,7 +107,7 @@ def choose_di_tile(arch : Arch, op : ConvDi):
     ConvDi(None, None, None, (None, None), None, (None, None), None, (None, None), None, None, None, None))
 def place_conv2ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
-    tile = choose_di_tile(conv)
+    tile = choose_di_tile(arch, conv)
 
     sim.map2d_place([
         [
@@ -131,7 +131,7 @@ def place_conv2ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
     ConvDi(None, None, None, (None, None, None), None, (None, None, None), None, (None, None, None), None, None, None, None))
 def place_conv3ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
-    tile = choose_di_tile(conv)
+    tile = choose_di_tile(arch, conv)
 
     sim.map2d_place([
         [
