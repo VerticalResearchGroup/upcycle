@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
     ops.Linear(None, None, 1, 1, 4096, 3072, False, True))
 def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
-    tile = ops.matmul.choose_tile(mm)
+    tile = ops.matmul.choose_tile(arch, mm)
     rkblk, ckblk = blk2d(mm.k)
 
     sim.map2d_place([
@@ -58,7 +58,7 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ops.Linear(None, None, 1, Slice(2, 65536), 4096, 3072, False, True))
 def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
-    tile = ops.matmul.choose_tile(mm)
+    tile = ops.matmul.choose_tile(arch, mm)
     rkblk, ckblk = blk2d(mm.k)
 
     sim.map2d_place([

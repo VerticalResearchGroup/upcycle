@@ -143,6 +143,7 @@ class Tensor:
         return [c_model.AffineTile(self.oid, self.shape, self.strides, idx)]
 
     def __getitem__(self, _idx):
+        assert len(_idx) == len(self.shape)
         # N.B. We use Python's __getitem__ as a frontend for all this indexing
         # nonsense for cosmetic reasons. This way we can make a tensor and then
         # write something like A[1:2, 5:, :] and it will produce all the

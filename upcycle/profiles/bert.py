@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
     ops.Matmul(None, None, Slice(1, 1024), Slice(1, 1024), 64, 178, None, None))
 def bert_l171_l172(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
-    tile = ops.matmul.choose_tile(mm)
+    tile = ops.matmul.choose_tile(arch, mm)
 
     sim.map2d_place([
         [
@@ -41,7 +41,7 @@ def bert_l171_l172(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ops.Linear(None, None, 1, Slice(127, 513), 1024, 1024, False, True))
 def bert_l0_b1(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
-    tile = ops.matmul.choose_tile(mm)
+    tile = ops.matmul.choose_tile(arch, mm)
 
     sim.map2d_place([
         [

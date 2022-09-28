@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
     ops.Matmul(None, None, None, 27, 27, 128, None, None))
 def place_dlrm_interaction(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
-    tile = ops.matmul.choose_tile(mm)
+    tile = ops.matmul.choose_tile(arch, mm)
 
     sim.map2d_place([
         [

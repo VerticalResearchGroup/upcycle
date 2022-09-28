@@ -98,6 +98,8 @@ class Slice:
     @property
     def indices(self): yield from range(self.start, self.stop, self.step)
 
+    def __iter__(self): yield from self.indices
+
     def subslice(self, chunksize):
         assert self.step == 1
         for i in range(self.start, self.stop, chunksize):

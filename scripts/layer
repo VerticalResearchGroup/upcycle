@@ -75,6 +75,9 @@ def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=Tru
     cache = {}
     tt0 = time.perf_counter_ns()
     for i, op in enumerate(app.oplist):
+        nsteps = U.model.num_steps(arch, op)
+        logger.debug(f'# Steps: {nsteps}')
+
         t0 = time.perf_counter_ns()
         if op not in cache:
             result = simulate_layer(arch, op, {})
