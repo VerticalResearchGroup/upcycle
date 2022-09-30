@@ -207,7 +207,7 @@ def choose_dw_tile(arch : Arch, op : ConvDw):
     ConvDw(None, None, None, (None, None), None, (None, None), None, (None, None), None, None, None, None))
 def place_conv2d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
-    tile = choose_dw_tile(conv)
+    tile = choose_dw_tile(arch, conv)
     rnblk, cnblk = blk2d(conv.n)
 
     sim.map2d_place([
@@ -245,7 +245,7 @@ def place_conv2d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
     ConvDw(None, None, None, (None, None, None), None, (None, None, None), None, (None, None, None), None, None, None, None))
 def place_conv3d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
-    tile = choose_dw_tile(conv)
+    tile = choose_dw_tile(arch, conv)
     rnblk, cnblk = blk2d(conv.n)
 
     sim.map2d_place([
