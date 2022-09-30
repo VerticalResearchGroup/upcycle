@@ -15,8 +15,6 @@ from .dw import *
 #
 
 def choose_fwd_tile(arch : Arch, op : Conv):
-    assert op.d == 2
-
     return {
         (256, Dtype.I8,   False): ConvTile256I8KC,
         (256, Dtype.FP16, False): ConvTile256FP16KC,

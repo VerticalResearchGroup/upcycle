@@ -142,7 +142,7 @@ class MatmulTile1024MKNKI8_SmallK(MatmulTileMKNK_SmallK):
 @dataclass(frozen=True)
 class MatmulTile256MKNKFP16_SmallK(MatmulTileMKNK_SmallK):
     vbits = 256
-    dtype = Dtype.I8
+    dtype = Dtype.FP16
     tm = 8
     tn = 4
     tk = 16
@@ -151,7 +151,7 @@ class MatmulTile256MKNKFP16_SmallK(MatmulTileMKNK_SmallK):
 @dataclass(frozen=True)
 class MatmulTile512MKNKFP16_SmallK(MatmulTileMKNK_SmallK):
     vbits = 512
-    dtype = Dtype.I8
+    dtype = Dtype.FP16
     tm = 16
     tn = 4
     tk = 32
@@ -160,7 +160,7 @@ class MatmulTile512MKNKFP16_SmallK(MatmulTileMKNK_SmallK):
 @dataclass(frozen=True)
 class MatmulTile1024MKNKFP16_SmallK(MatmulTileMKNK_SmallK):
     vbits = 1024
-    dtype = Dtype.I8
+    dtype = Dtype.FP16
     tm = 32
     tn = 4
     tk = 64
