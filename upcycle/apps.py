@@ -273,9 +273,25 @@ def ssdrn34_300(dtype, n=1):
     ])
 
 def unet3d(dtype, n=1):
+    #
+    # N.B. The first and last few layers of unet are 128x128x128 sized inputs /
+    # outpus which make the layers quite large in terms of op-count footprint.
+    # This takes a very long time to run simulations for. To help the model, I
+    # use smaller spatial dimensions for these layers, and then multiply their
+    # instance count by the factor reduction. This is semantically equivalent to
+    # computing the convolution in stages over the spatial dimensions of the
+    # input. It shouldn't affect the core utilization at all, and also shouldn't
+    # meaninfgully impact the generated traffic, either.
+    #
+    # This makes simulation faster because the model will only simulate each
+    # unique op once, reducing overall sim time.
+    #
+
     return Trace([
-        ops.Conv(dtype, True, n, (128, 128, 128), 1, (128, 128, 128), 32, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (128, 128, 128), 32, (128, 128, 128), 32, (3, 3, 3), 1, 1, False),
+        # N.B. Original spatial dimensions are 128x128x128
+        ops.Conv(dtype, True, n, (32, 32, 32), 1, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+    ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (128, 128, 128), 32, (64, 64, 64), 64, (3, 3, 3), 2, 1, False),
         ops.Conv(dtype, True, n, (64, 64, 64), 64, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (64, 64, 64), 64, (32, 32, 32), 128, (3, 3, 3), 2, 1, False),
@@ -294,10 +310,12 @@ def unet3d(dtype, n=1):
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (64, 64, 64), 128, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (64, 64, 64), 64, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (128, 128, 128), 64, (128, 128, 128), 32, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (128, 128, 128), 32, (128, 128, 128), 32, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (128, 128, 128), 32, (128, 128, 128), 3, (1, 1, 1), 1, 0, False),
-    ])
+    ] + [
+        # N.B. Original spatial dimensions are 128x128x128
+        ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 3, (1, 1, 1), 1, 0, False),
+    ] * (4*4*4))
 
 # N.B. The official Kits19 dataset for unet runs many forward passes per sample,
 # averaging 1544696 fwds / 24612 samples = ~63 fwd passes / sample. Here we
