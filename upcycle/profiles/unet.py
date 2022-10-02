@@ -20,8 +20,8 @@ def place_unet_conv3d_dw(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
     csblk = maxpow2(conv.sf[1])
     ctblk = maxpow2(conv.sf[2])
 
-    rnblk = 5
-    cnblk = 3
+    rnblk = 4
+    cnblk = 2
 
     logger.debug(f'rrblk={rrblk} csblk={csblk} ctblk={ctblk} rnblk={rnblk} cnblk={cnblk}')
 
