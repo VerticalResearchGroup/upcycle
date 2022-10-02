@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+
+import upcycle as U
+import sys
+import functools
+import numpy as np
+import logging
+import multiprocessing
+import time
+import argparse
+import tqdm
+
+blue = '\x1b[38;5;39m'
+green = '\033[92m'
+reset = '\x1b[0m'
+
+logging._srcfile = None
+logger = logging.getLogger()
+ch = logging.StreamHandler(sys.stdout)
+fmt = U.logutils.CustomFormatter()
+ch.setFormatter(fmt)
+logging.basicConfig(level=logging.INFO, handlers=[ch])
+
+if __name__ == '__main__':
+    counter = None
+    lock = None
+
+def init_pool_processes(c, l):
+    global counter
+    global lock
+
+    counter = c
+    lock = l
+
+def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
+    logger.debug(f'Simulating {op}...')
+    global counter
+    global lock
+    sim_kwargs['counter'] = counter
+    sim_kwargs['lock'] = lock
+    result = U.model.simulate(arch, op, **sim_kwargs)
+    logger.debug(f'Finished {op}')
+    return result
+
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, count):
+    gops = int(op.flops / result.cycles * arch.freq / 1e12)
+    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
+    cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
+    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
+
+def simulate_apps_par(parallel : int, arch : U.Arch, apps : list[U.apps.Trace], verbose=True):
+    counter = multiprocessing.Value('i', 0)
+    lock = multiprocessing.Lock()
+
+    pool = multiprocessing.Pool(
+        parallel, initializer=init_pool_processes, initargs=(counter, lock))
+    tt0 = time.perf_counter_ns()
+
+    unique_ops = sum(map(lambda app: list(app.unique_ops), apps), [])
+    logger.info(f'Counting steps for {len(unique_ops)} ops...')
+    total_steps = sum(pool.map(functools.partial(U.model.num_steps, arch), unique_ops))
+    logger.info(f'Counted {total_steps} steps')
+
+    progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
+
+    result = pool.map_async(
+        functools.partial(simulate_layer, arch, sim_kwargs={}), unique_ops)
+
+    last = 0
+    while not result.ready():
+        result.wait(0.5)
+        cur = counter.value
+        progress.update(cur - last)
+        last = cur
+
+    progress.close()
+    unique_results = result.get()
+
+    results = {op: result for op, result in zip(unique_ops, unique_results)}
+    tt1 = time.perf_counter_ns()
+
+    return tt1 - tt0, results
+
+apps = [
+    U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+
+    U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+
+    U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    U.apps.mlperf_v1_apps['unet'].default_train_large(),
+
+    U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+
+    U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+]
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Simulate an application')
+    U.arch.arch_cli_params(parser)
+    parser.add_argument('-p', '--parallel', type=int, default=1)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+    arch = U.arch.arch_from_cli(args)
+
+    logging.info(f'Arch: {arch}')
+
+    time_ns, results = simulate_apps_par(args.parallel, arch, apps, args.verbose)
+
+    for op, stats in results.items():
+        logging.info(f'{op}: {stats.cycles} cyc')

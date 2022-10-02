@@ -427,6 +427,12 @@ class App:
     def train_flops(self):
         return self.train_factory(self.train_dtype, n=1).train().flops
 
+
+    def default_infer_online(self): return self.infer_factory(self.infer_dtype, n=self.bs.infer_online)
+    def default_infer_offline(self): return self.infer_factory(self.infer_dtype, n=self.bs.infer_offline)
+    def default_train_small(self): return self.train_factory(self.train_dtype, n=self.bs.train_small)
+    def default_train_large(self): return self.train_factory(self.train_dtype, n=self.bs.train_large)
+
 mlperf_v1_apps = {
     'testmm': App(
         testmatmul, Dtype.I8,
