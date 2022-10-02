@@ -130,8 +130,11 @@ def cld(n : int, d : int):
     """Ceiling-divide."""
     return (n // d) + (1 if n % d > 0 else 0)
 
+def flog2(n : int):
+    return int(np.log2(n))
+
 def maxpow2(n : int):
-    return int(2 ** int(np.log2(n)))
+    return int(1 << flog2(n))
 
 def blk2d(n : int, max=64):
     i = 1
