@@ -25,14 +25,14 @@ def resnet50_small_spatial(arch : Arch, conv : ops.Conv, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, conv, ins, outs, False, ns, (bp1, bq1), bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp * 2)
                 for bq1 in bq0.subslice(tile.tq * 2)
                 for ns in bn0.subslice(1)
                 for bk2 in bk1.subslice(tile.tk)
                 for bc1 in Slice(0, conv.c).subslice(tile.tc)
-            ]
+            )
             for bk1 in bk0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(cld(arch.ncols, 64))
             for bn0 in Slice(0, conv.n).blkslice(16)
@@ -50,13 +50,13 @@ def place_convdi_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm2, bn1, bk1)
                 for li in Slice(0, mm.l).indices
                 for bk1 in Slice(0, mm.k).subslice(tile.tk)
                 for bm2 in bm1.subslice(tile.tm * 16)
                 for bn1 in Slice(0, mm.n).subslice(tile.tn * 8)
-            ]
+            )
             for bm1 in bm0.blkslice(64)
         ]
         for bm0 in Slice(0, mm.m).blkslice(32)
@@ -77,13 +77,13 @@ def place_convdw_matmul(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm1, bn1, bk2)
                 for li in Slice(0, mm.l).indices
                 for bk2 in bk1.subslice(tile.tk * 4)
                 for bm1 in bm0.subslice(tile.tm * 4)
                 for bn1 in bn0.subslice(tile.tn * 4)
-            ]
+            )
             for bk1 in bk0.blkslice(ckblk)
             for bn0 in Slice(0, mm.n).blkslice(cld(mm.n, tile.tn))
         ]
@@ -109,7 +109,7 @@ def place_conv2d_dw_3x3(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(
                     arch, conv, ins, outs, False,
                     ns, (ps, qs), (br0, bs0), ks, cs)
@@ -119,7 +119,7 @@ def place_conv2d_dw_3x3(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
                 for qs in Slice(0, conv.so[1]).subslice(tile.tq * 2)
                 for cs in Slice(0, conv.c).subslice(tile.tc * 4)
                 for ks in bk1.subslice(tile.tk * 4)
-            ]
+            )
             for bn1 in bn0.blkslice(cnblk)
             for bs0 in Slice(0, conv.sf[1]).blkslice(3)
             for bk1 in bk0.blkslice(4)
@@ -147,7 +147,7 @@ def place_conv2d_dw_7x7(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(
                     arch, conv, ins, outs, False,
                     ns, (ps, qs), (br0, bs0), ks, cs)
@@ -157,7 +157,7 @@ def place_conv2d_dw_7x7(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
                 for qs in Slice(0, conv.so[1]).subslice(tile.tq)
                 for cs in Slice(0, conv.c).subslice(tile.tc)
                 for ks in bk1.subslice(tile.tk)
-            ]
+            )
             for bn1 in bn0.blkslice(4)
             for bs0 in Slice(0, conv.sf[1]).blkslice(cnblk)
             for bk1 in bk0.blkslice(4)

@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 class HierSim(Sim):
-    def __init__(self, arch : HierArch):
-        super().__init__(arch)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.l2 = [
             c_model.Cache(
-                arch.l2.nset(arch.line_size),
-                arch.l2.assoc,
-                arch.l2.lbits(arch.line_size))
-            for _ in range(arch.ngroups)
+                self.arch.l2.nset(self.arch.line_size),
+                self.arch.l2.assoc,
+                self.arch.l2.lbits(self.arch.line_size))
+            for _ in range(self.arch.ngroups)
         ]
 
 def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim):

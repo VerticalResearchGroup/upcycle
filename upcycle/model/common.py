@@ -1,6 +1,6 @@
 from dataclasses import dataclass, fields
 from random import shuffle
-from typing import Callable, Iterator
+from typing import Callable, Generator, Iterator
 import multiprocessing
 import numpy as np
 import itertools
@@ -316,41 +316,70 @@ class SimBase:
     def __init__(self, arch : Arch):
         self.arch = arch
 
-    def place_work(self, tid, wl : list[WorkItem]): raise NotImplementedError()
+    def place_work(self, tid, wl : WorkItem): raise NotImplementedError()
 
-    def flatmap_place(self, vtiles : list[list[WorkItem]], offset=0, bbox=None, randomize=False):
+    def step(self): raise NotImplementedError()
+
+    def drain(self): raise NotImplementedError()
+
+    def flatmap_place(self, vtiles : list[Iterator[WorkItem]], offset=0, bbox=None, randomize=False):
         if randomize: shuffle(vtiles)
-
         logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
-
         if bbox is not None: raise DeprecationWarning('bbox is deprecated')
+        if offset != 0: raise DeprecationWarning('offset is deprecated')
+
+        tiles = []
 
         i = 0
-        for tid, n in enumerate(blkdiv(len(vtiles), self.arch.ntiles)):
-            for vtile in vtiles[i : i + n]:
-                self.place_work(tid, vtile)
+        for n in blkdiv(len(vtiles), self.arch.ntiles):
+            tiles.append(itertools.chain(*vtiles[i : i + n]))
 
             i += n
-        return len(vtiles)
 
-    def map2d_place(self, vtiles : list[list[list[WorkItem]]]):
+        while True:
+            placed = 0
+            for tid, gen in enumerate(tiles):
+                try:
+                    self.place_work(tid, next(gen))
+                    placed += 1
+                except StopIteration:
+                    pass
+
+            if placed == 0: break
+            self.step()
+
+    def map2d_place(self, vtiles : list[list[Iterator[WorkItem]]]):
         trows, tcols = len(vtiles), len(vtiles[0])
-
         logging.debug(f'map2d_place: {trows}x{tcols} vtiles')
+        tiles = []
 
-        vrow = 0
-        for r, m in enumerate(blkdiv(trows, self.arch.nrows)):
-            vcol = 0
-            for c, n in enumerate(blkdiv(tcols, self.arch.ncols)):
-                tid = self.arch.coords_tile(r, c)
-                for tilerow in vtiles[vrow : vrow + m]:
-                    for tile in tilerow[vcol : vcol + n]:
-                        self.place_work(tid, tile)
+        r = 0
+        for m in blkdiv(trows, self.arch.nrows):
+            tiles.append([])
+            c = 0
+            for n in blkdiv(tcols, self.arch.ncols):
+                tiles[-1].append(itertools.chain(*[
+                    vtiles[r + i][c + j]
+                    for i in range(m)
+                    for j in range(n)]))
 
-                vcol += n
-            vrow += m
+                c += n
+            r += m
 
-        return trows * tcols
+        while True:
+            placed = 0
+            for r, row in enumerate(tiles):
+                for c, gen in enumerate(row):
+                    tid = r * self.arch.ncols + c
+                    try:
+                        wi = next(gen)
+                        self.place_work(tid, wi)
+                        placed += 1
+                    except StopIteration:
+                        pass
+
+            if placed == 0: break
+            self.step()
 
     def barrier(self): raise NotImplementedError()
 
@@ -360,12 +389,16 @@ class StepCounter(SimBase):
     N.B. This is used to predict runtime ahead of execution. See num_steps()
     below.
     """
-    def __init__(self, arch : Arch):
+    def __init__(self, arch : Arch, **kwargs):
         super().__init__(arch)
         self.cur_step = [0 for _ in range(arch.ntiles)]
 
-    def place_work(self, tid, wl : list[WorkItem]):
-        self.cur_step[tid] += len(wl)
+    def place_work(self, tid, wl : WorkItem):
+        self.cur_step[tid] += 1
+
+    def step(self): pass
+
+    def drain(self): pass
 
     def barrier(self):
         max_step = max(self.cur_step)
@@ -375,8 +408,19 @@ class StepCounter(SimBase):
     def nsteps(self): return max(self.cur_step)
 
 class Sim(SimBase):
-    def __init__(self, arch : Arch):
+    def __init__(
+        self,
+        arch : Arch,
+        noc_sim_func : Callable,
+        total_steps : int,
+        lock : any = None,
+        counter : any = None
+    ):
         super().__init__(arch)
+        self.noc_sim_func = noc_sim_func
+        self.total_steps = total_steps
+        self.lock = lock
+        self.counter = counter
         self.dest_maps = {}
         self.exec_cycles = {}
         self.perfect_exec_cycles = {}
@@ -384,6 +428,7 @@ class Sim(SimBase):
         self.l1_accesses = 0
         self.l1_hits = 0
         self.flops = 0
+        self.global_step = 0
         self.cur_step = [0 for _ in range(arch.ntiles)]
         self.l1 = [
             c_model.Cache(
@@ -392,6 +437,11 @@ class Sim(SimBase):
                 arch.l1.lbits(arch.line_size))
             for _ in range(arch.ntiles)
         ]
+        self.total_traffic = noc.zero_traffic(arch)
+        self.cycles = 0
+        self.compute_cyc = 0
+        self.kwstats = {}
+        self.kwstats['rss'] = []
 
     def log_exec_cycles(self, step, tid, ncycles, perfect):
         if step not in self.exec_cycles:
@@ -405,50 +455,79 @@ class Sim(SimBase):
             self.dest_maps[step] = c_model.DestList()
         self.dest_maps[step].set(laddr, tid)
 
-    def place_work(self, tid, wl : list[WorkItem]):
+    def place_work(self, tid, wi : WorkItem):
+        assert isinstance(wi, WorkItem)
         global USE_C_TRACE
-        tile_cur_step = self.cur_step[tid]
-        self.cur_step[tid] += len(wl)
+        self.l1[tid].reset()
+        step = self.cur_step[tid]
 
-        for i, wi in enumerate(wl):
-            self.l1[tid].reset()
-            step = tile_cur_step + i
+        # if logger.isEnabledFor(logging.DEBUG) and tid == 0:
+        #     logger.debug(f'Tile 0: step={step} wi={wi}')
 
-            # if logger.isEnabledFor(logging.DEBUG) and tid == 0:
-            #     logger.debug(f'Tile 0: step={step} wi={wi}')
+        if step not in self.dest_maps:
+            self.dest_maps[step] = c_model.DestList()
 
-            if step not in self.dest_maps:
-                self.dest_maps[step] = c_model.DestList()
+        # if logger.isEnabledFor(logging.DEBUG):
+        if wi.perfect_exec_lat > wi.exec_lat:
+            logger.error(f'Perfect exec lat > exec lat! {wi.perfect_exec_lat} > {wi.exec_lat} ({wi.flops} ops)')
+            logger.error(f'{wi}')
 
-            # if logger.isEnabledFor(logging.DEBUG):
-            if wi.perfect_exec_lat > wi.exec_lat:
-                logger.error(f'Perfect exec lat > exec lat! {wi.perfect_exec_lat} > {wi.exec_lat} ({wi.flops} ops)')
-                logger.error(f'{wi}')
+        exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
 
-            exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
+        self.log_exec_cycles(step, tid, exec_lat, wi.perfect_exec_lat)
+        self.flops += wi.flops
 
-            self.log_exec_cycles(step, tid, exec_lat, wi.perfect_exec_lat)
-            self.flops += wi.flops
+        if USE_C_TRACE:
+            for tile in wi.read_trace:
+                c_model.tile_read_trace(
+                    self.l1[tid], self.dest_maps[step], tile, tid)
 
-            if USE_C_TRACE:
-                for tile in wi.read_trace:
-                    c_model.tile_read_trace(
-                        self.l1[tid],
-                        self.dest_maps[step],
-                        tile,
-                        tid)
-
-            else:
-                for l in wi.read_trace:
-                    if self.l1[tid].lookup(l):
-                        self.l1[tid].insert(l)
-                        continue
+        else:
+            for l in wi.read_trace:
+                if self.l1[tid].lookup(l):
                     self.l1[tid].insert(l)
-                    self.log_read(step, tid, l)
+                    continue
+                self.l1[tid].insert(l)
+                self.log_read(step, tid, l)
 
-            self.rss[tid].append(self.l1[tid].get_accesses() * self.arch.line_size)
-            self.l1_accesses += self.l1[tid].get_accesses()
-            self.l1_hits += self.l1[tid].get_hits()
+        self.rss[tid].append(self.l1[tid].get_accesses() * self.arch.line_size)
+        self.l1_accesses += self.l1[tid].get_accesses()
+        self.l1_hits += self.l1[tid].get_hits()
+
+        self.cur_step[tid] += 1
+
+    def step(self):
+        max_exec_cyc = max(self.exec_cycles[self.global_step])
+        perfect_exec_cyc = max(self.perfect_exec_cycles[self.global_step])
+        traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
+        net_latency = np.max(traffic) / self.arch.noc_ports_per_dir
+        self.total_traffic += traffic
+
+        if logger.isEnabledFor(logging.DEBUG):
+            cores_used = np.count_nonzero(self.exec_cycles[self.global_step])
+            logger.debug(f'Step {self.global_step + 1}/{self.total_steps}: Cores used: {cores_used}, Exec latency: {self.compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
+
+        # Update compute_cyc after this line because compute is one time-step
+        # behind prefetch.
+        self.cycles += max(self.compute_cyc, net_latency)
+        self.compute_cyc = max_exec_cyc
+
+        tiles_rss = np.array([rss[self.global_step] for rss in self.rss if len(rss) > self.global_step])
+        avg_rss = np.mean(tiles_rss, axis=0)
+        max_rss = np.max(tiles_rss, axis=0)
+        self.kwstats['rss'].append((avg_rss, max_rss))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'+ Max RSS = {max_rss}, Avg RSS = {avg_rss}')
+
+        if self.lock is not None and self.counter is not None:
+            with self.lock: self.counter.value += 1
+
+        self.global_step += 1
+
+    def drain(self):
+        logger.debug(f'Compute drain latency: {self.compute_cyc}')
+        self.cycles += self.compute_cyc
 
     def barrier(self):
         max_step = max(self.cur_step)
@@ -486,6 +565,7 @@ def common_sim(
     noc_sim_func : Callable = simulate_noc,
     counter : multiprocessing.Value = None,
     lock : multiprocessing.Lock = None,
+    num_steps : int = None
 ):
     """Primary entry point for most simulator.
 
@@ -493,60 +573,8 @@ def common_sim(
     reason to write a custom sim function for a particular architecture in the
     future if there are some wacky features we want to model.
     """
-    sim = ex_sim_cls(arch)
-    kwstats = {}
-
-    # place_op will call the placement function for the given operator an
-    # collect step-wise information such as the read trace.
+    sim = ex_sim_cls(arch, noc_sim_func, num_steps, lock, counter)
+    logger.debug(f'Simulating {num_steps} steps...')
     place_op(arch, op, sim)
-
-    logger.debug(f'Simulating {sim.nsteps} steps with {sim.flops} flops...')
-    total_traffic = noc.zero_traffic(arch)
-    cycles = 0
-    compute_cyc = 0
-    nsteps = sim.nsteps
-
-    kwstats['rss'] = []
-
-    # Main simulator loop. By now we've already done all the core modeling, so
-    # we just need to simulate the traffic for each step.
-    for step in range(nsteps):
-        max_exec_cyc = max(sim.exec_cycles[step])
-        perfect_exec_cyc = max(sim.perfect_exec_cycles[step])
-        traffic = noc_sim_func(arch, kwstats, step, sim)
-        net_latency = np.max(traffic) / arch.noc_ports_per_dir
-        total_traffic += traffic
-
-        if logger.isEnabledFor(logging.DEBUG):
-            cores_used = np.count_nonzero(sim.exec_cycles[step])
-            logger.debug(f'Step {step + 1}/{sim.nsteps}: Cores used: {cores_used}, Exec latency: {compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
-
-        # Update compute_cyc after this line because compute is one time-step
-        # behind prefetch.
-        cycles += max(compute_cyc, net_latency)
-        compute_cyc = max_exec_cyc
-
-        tiles_rss = np.array([rss[step] for rss in sim.rss if len(rss) > step])
-        avg_rss = np.mean(tiles_rss, axis=0)
-        max_rss = np.max(tiles_rss, axis=0)
-        kwstats['rss'].append((avg_rss, max_rss))
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'+ Max RSS = {max_rss}, Avg RSS = {avg_rss}')
-
-        if lock is not None and counter is not None:
-            with lock: counter.value += 1
-
-    logger.debug(f'Compute drain latency: {compute_cyc}')
-
-    # I'm not sure if this actually helps at all, but here's some stuff that
-    # might be useful for reducing memory usage.
-    if aggressive_mem():
-        del kwstats
-        del sim
-        del total_traffic
-        total_traffic = None
-        kwstats = {}
-
-    cycles += compute_cyc
-    return SimResult(nsteps, cycles, total_traffic, kwstats)
+    sim.drain()
+    return SimResult(sim.nsteps, sim.cycles, sim.total_traffic, sim.kwstats)

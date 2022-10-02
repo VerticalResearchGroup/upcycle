@@ -38,10 +38,10 @@ def place_conv2d_default(arch : Arch, conv : Conv, sim : M.SimBase):
     logger.debug(f'Conv tile: {tile}')
 
     sim.flatmap_place([
-        [
+        (
             tile(arch, conv, ins, outs, False, ns, (bp0, bq0), bc1, bk0)
             for bc1 in bc0.subslice(tile.tc * 2)
-        ]
+        )
         for ns in Slice(0, conv.n).subslice(1)
         for bp0 in Slice(0, conv.so[0]).subslice(tile.tp)
         for bq0 in Slice(0, conv.so[1]).subslice(tile.tq)
@@ -58,10 +58,10 @@ def place_conv3d_default(arch : Arch, conv : Conv, sim : M.SimBase):
     logger.debug(f'Conv tile: {tile}')
 
     sim.flatmap_place([
-        [
+        (
             tile(arch, conv, ins, outs, False, ns, (bo0, bp0, bq0), bc1, bk0)
             for bc1 in bc0.subslice(tile.tc * 2)
-        ]
+        )
         for ns in Slice(0, conv.n).subslice(1)
         for bo0 in Slice(0, conv.so[0]).subslice(tile.to)
         for bp0 in Slice(0, conv.so[1]).subslice(tile.tp)
@@ -109,14 +109,14 @@ def place_conv2ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, conv, ins, outs, False, ns, (hs, ws), ks, cs)
                 for ns in bn1.subslice(1)
                 for hs in bh0.subslice(conv.stride)
                 for ws in bw0.subslice(conv.stride)
                 for cs in Slice(0, conv.c).subslice(tile.tc * 2)
                 for ks in Slice(0, conv.k).subslice(tile.tk * 4)
-            ]
+            )
             for bn1 in bn0.blkslice(2)
             for bw0 in Slice(conv.pad, conv.si[1] + conv.pad).blkslice(arch.ncols // 2)
         ]
@@ -133,7 +133,7 @@ def place_conv3ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, conv, ins, outs, False, ns, (hs, ws, ds), ks, cs)
                 for ns in bn1.subslice(1)
                 for hs in bh0.subslice(conv.stride)
@@ -141,7 +141,7 @@ def place_conv3ddi_default(arch : Arch, conv : ConvDi, sim : M.SimBase):
                 for ds in Slice(0, conv.si[2]).subslice(conv.stride)
                 for cs in Slice(0, conv.c).subslice(tile.tc * 2)
                 for ks in Slice(0, conv.k).subslice(tile.tk * 4)
-            ]
+            )
             for bn1 in bn0.blkslice(2)
             for bw0 in Slice(conv.pad, conv.si[1] + conv.pad).blkslice(arch.ncols // 2)
         ]
@@ -210,7 +210,7 @@ def place_conv2d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(
                     arch, conv, ins, outs, False,
                     ns, (ps, qs), (br0, bs0), ks, cs)
@@ -220,7 +220,7 @@ def place_conv2d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
                 for qs in Slice(0, conv.so[1]).subslice(tile.tq)
                 for cs in Slice(0, conv.c).subslice(tile.tc)
                 for ks in bk1.subslice(tile.tk)
-            ]
+            )
             for bn1 in bn0.blkslice(cnblk)
             for bs0 in Slice(0, conv.sf[1]).subslice(1)
             for bk1 in bk0.blkslice(16)
@@ -244,30 +244,38 @@ def place_conv2d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
 def place_conv3d_dw_default(arch : Arch, conv : ConvDw, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
     tile = choose_dw_tile(arch, conv)
-    rnblk, cnblk = blk2d(conv.n)
+
+    rrblk = maxpow2(conv.sf[0])
+    csblk = maxpow2(conv.sf[1])
+    ctblk = maxpow2(conv.sf[2])
+
+    rnblk = arch.nrows // rrblk // 2
+    cnblk = arch.ncols // csblk // ctblk // 2
+
+    logger.debug(f'rrblk={rrblk} csblk={csblk} ctblk={ctblk} rnblk={rnblk} cnblk={cnblk}')
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(
                     arch, conv, ins, outs, False,
-                    ns, (os, ps, qs), (br0, bs0, bt0), ks, cs)
+                    ns, (os, ps, qs), (br0, bs1, bt1), ks, cs)
 
                 for ns in bn1.subslice(tile.tn)
-                for os in Slice(0, conv.so[0]).subslice(tile.to)
-                for ps in Slice(0, conv.so[1]).subslice(tile.tp)
-                for qs in Slice(0, conv.so[2]).subslice(tile.tq)
-                for cs in Slice(0, conv.c).subslice(tile.tc)
-                for ks in bk1.subslice(tile.tk)
-            ]
+                for ps in Slice(0, conv.so[0]).subslice(tile.tp * 2)
+                for qs in Slice(0, conv.so[1]).subslice(tile.tq * 2)
+                for os in Slice(0, conv.so[2]).subslice(tile.to * 2)
+                for cs in Slice(0, conv.c).subslice(tile.tc * 32)
+                for ks in bk1.subslice(tile.tk * 32)
+            )
             for bn1 in bn0.blkslice(cnblk)
-            for bt0 in Slice(0, conv.sf[2]).subslice(1)
-            for bk1 in bk0.blkslice(16)
+            for bs1 in Slice(0, conv.sf[1]).blkslice(csblk)
+            for bt1 in Slice(0, conv.sf[2]).blkslice(ctblk)
+            for bk1 in bk0.blkslice(2)
         ]
         for bn0 in Slice(0, conv.n).blkslice(rnblk)
-        for br0 in Slice(0, conv.sf[0]).subslice(1)
-        for bs0 in Slice(0, conv.sf[1]).subslice(1)
-        for bk0 in Slice(0, conv.k).blkslice(8)
+        for br0 in Slice(0, conv.sf[0]).blkslice(rrblk)
+        for bk0 in Slice(0, conv.k).blkslice(2)
     ])
 
     sim.barrier()

@@ -25,13 +25,13 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm1, bn2, bk2)
                 for li in Slice(0, mm.l).indices
                 for bm1 in Slice(0, mm.m).blkslice(1)
                 for bn2 in bn1.subslice(tile.tn * 4)
                 for bk2 in bk1.subslice(tile.tk)
-            ]
+            )
             for bn1 in bn0.blkslice(8)
             for bk1 in bk0.blkslice(ckblk)
         ]
@@ -63,13 +63,13 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm1, bn1, bk2)
                 for li in bl1.indices
                 for bm1 in bm0.subslice(tile.tm * 4)
                 for bn1 in bn0.subslice(tile.tn * 4)
                 for bk2 in bk1.subslice(tile.tk)
-            ]
+            )
             for bl1 in bl0.blkslice(1)
             for bn0 in Slice(0, mm.n).blkslice(16)
             for bk1 in bk0.blkslice(ckblk)

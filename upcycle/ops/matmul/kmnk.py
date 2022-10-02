@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class MatmulTileKMNK(MatmulTile):
     tr_a = True
-    tr_b = False
+    tr_b = True
     ttk = None
 
     def intrinsic(self, mss, nss, kss):

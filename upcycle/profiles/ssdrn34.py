@@ -95,14 +95,14 @@ def place_ssdrn34_300_l95_b16(arch : Arch, conv : ops.Conv, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
                 for bp1 in bp0.subslice(tile.tp)
                 for bq1 in bq0.subslice(tile.tq * 2)
                 for ni in bn1.indices
                 for bk2 in bk1.subslice(tile.tk * 2)
                 for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
-            ]
+            )
             for bk1 in bk0.blkslice(2)
             for bn1 in bn0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(8)

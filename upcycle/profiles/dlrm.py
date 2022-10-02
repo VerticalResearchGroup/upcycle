@@ -18,13 +18,13 @@ def place_dlrm_interaction(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm1, bn1, bk1)
                 for li in bl1.indices
                 for bm1 in Slice(0, mm.m).subslice(tile.tm)
                 for bn1 in Slice(0, mm.n).subslice(tile.tn)
                 for bk1 in Slice(0, mm.k).blkslice(1)
-            ]
+            )
             for bl1 in bl0.blkslice(64)
         ]
         for bl0 in Slice(0, mm.l).blkslice(32)

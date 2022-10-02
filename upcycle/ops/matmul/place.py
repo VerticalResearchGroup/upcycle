@@ -47,13 +47,13 @@ def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
 
     sim.map2d_place([
         [
-            [
+            (
                 tile(arch, mm, ins, outs, False, li, bm1, bn1, bk1)
                 for li in Slice(0, mm.l).indices
                 for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
                 for bm1 in bm0.subslice(tile.tm * 4)
                 for bn1 in bn0.subslice(tile.tn * 4)
-            ]
+            )
             for bm0 in Slice(0, mm.m).blkslice(64)
         ]
         for bn0 in Slice(0, mm.n).blkslice(32)

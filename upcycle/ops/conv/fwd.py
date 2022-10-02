@@ -181,7 +181,7 @@ class ConvTile1024FP16KC(ConvTile):
 class ConvTile256FP16CK(ConvTile):
     vbits = 256
     dtype = Dtype.FP16
-    tr_w = False
+    tr_w = True
     tk = matmul.MatmulTile256KMNKFP16.tm
     tq = matmul.MatmulTile256KMNKFP16.tn
     tc = matmul.MatmulTile256KMNKFP16.tk
@@ -191,7 +191,7 @@ class ConvTile256FP16CK(ConvTile):
 class ConvTile512FP16CK(ConvTile):
     vbits = 512
     dtype = Dtype.FP16
-    tr_w = False
+    tr_w = True
     tk = matmul.MatmulTile256KMNKFP16.tm
     tq = matmul.MatmulTile256KMNKFP16.tn
     tc = matmul.MatmulTile256KMNKFP16.tk
@@ -201,7 +201,7 @@ class ConvTile512FP16CK(ConvTile):
 class ConvTile1024FP16CK(ConvTile):
     vbits = 1024
     dtype = Dtype.FP16
-    tr_w = False
+    tr_w = True
     tk = matmul.MatmulTile256KMNKFP16.tm
     tq = matmul.MatmulTile256KMNKFP16.tn
     tc = matmul.MatmulTile256KMNKFP16.tk

@@ -94,7 +94,7 @@ class ConvDwTile(M.WorkItem):
         for kss in self.ks.subslice(self.tk):
             for css in self.cs.subslice(self.tc):
                 for qss in ns.subslice(self.tq):
-                    inner_loads, inner_cyc = self.intrinsic(kss, css, qss)
+                    inner_loads, inner_cyc = self.intrinsic(css, qss, kss)
                     num_loads += inner_loads
                     exec_cyc += inner_cyc
 
