@@ -26,12 +26,20 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 # logging.getLogger('upcycle.ops.common').setLevel(logging.INFO)
 
 
-def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, steps : bool):
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, steps : bool, print_func : bool):
+    if print_func:
+        func, score = U.model.choose_placement_func(arch, op)
+        func_str = f'(Place func: {func.__name__})'
+    else:
+        func_str = ''
+
     if steps:
         nsteps = U.model.num_steps(arch, op)
-        logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset} ({nsteps} steps)')
+        step_str = f'({nsteps} steps)'
     else:
-        logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
+        step_str = ''
+
+    logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset} {func_str} {step_str}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
@@ -41,6 +49,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-s', '--steps', action='store_true')
+    parser.add_argument('-f', '--func', action='store_true')
 
     args = parser.parse_args()
     # logger.setLevel(logging.DEBUG)
@@ -56,4 +65,4 @@ if __name__ == '__main__':
     logging.info('=' * 40)
 
     for i, op in enumerate(trace.oplist):
-        log_layer(arch, dtype, trace, i, op, args.steps)
+        log_layer(arch, dtype, trace, i, op, args.steps, args.func)
