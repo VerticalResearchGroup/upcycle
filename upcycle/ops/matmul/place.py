@@ -45,15 +45,18 @@ def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
     ins, outs = mm.make_tensors(arch)
     tile = choose_tile(arch, mm)
 
+    def inner_loop(bm, bn):
+        return (
+            tile(arch, mm, ins, outs, False, li, bm1, bn1, bk1)
+            for li in Slice(0, mm.l).indices
+            for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
+            for bm1 in bm.subslice(tile.tm * 4)
+            for bn1 in bn.subslice(tile.tn * 4)
+        )
+
     sim.map2d_place([
         [
-            (
-                tile(arch, mm, ins, outs, False, li, bm1, bn1, bk1)
-                for li in Slice(0, mm.l).indices
-                for bk1 in Slice(0, mm.k).subslice(tile.tk * 4)
-                for bm1 in bm0.subslice(tile.tm * 4)
-                for bn1 in bn0.subslice(tile.tn * 4)
-            )
+            inner_loop(bm0, bn0)
             for bm0 in Slice(0, mm.m).blkslice(64)
         ]
         for bn0 in Slice(0, mm.n).blkslice(32)

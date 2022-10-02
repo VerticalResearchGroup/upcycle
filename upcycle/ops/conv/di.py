@@ -114,7 +114,7 @@ class ConvDiTile(M.WorkItem):
             offx = sx % st
 
             n = 0
-            for sf in itertools.product(range(offx[i], self.op.sf[i], st) for i in range(self.op.d)):
+            for sf in itertools.product(*[range(offx[i], self.op.sf[i], st) for i in range(self.op.d)]):
                 sf = np.array(sf)
                 sy = (sx - sf) // st
                 if (sy < 0).any() or (sy >= self.op.so).any(): continue

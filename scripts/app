@@ -56,7 +56,10 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
         parallel, initializer=init_pool_processes, initargs=(counter, lock))
     tt0 = time.perf_counter_ns()
     unique_ops = list(app.unique_ops)
-    total_steps = sum(U.model.num_steps(arch, op) for op in unique_ops)
+    logger.info(f'Counting steps for {len(unique_ops)} ops...')
+    total_steps = sum(pool.map(functools.partial(U.model.num_steps, arch), unique_ops))
+    logger.info(f'Counted {total_steps} steps')
+
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 

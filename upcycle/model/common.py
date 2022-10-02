@@ -327,56 +327,58 @@ class SimBase:
         logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
         if bbox is not None: raise DeprecationWarning('bbox is deprecated')
         if offset != 0: raise DeprecationWarning('offset is deprecated')
+        tiles = [None for _ in range(self.arch.ntiles)]
 
-        tiles = []
+        logger.debug(f'{sum(blkdiv(len(vtiles), self.arch.ntiles))}')
 
         i = 0
-        for n in blkdiv(len(vtiles), self.arch.ntiles):
-            tiles.append(itertools.chain(*vtiles[i : i + n]))
-
+        for tid, n in enumerate(blkdiv(len(vtiles), self.arch.ntiles)):
+            tiles[tid] = itertools.chain(*[vtiles[i + j] for j in range(n)])
             i += n
 
         while True:
             placed = 0
-            for tid, gen in enumerate(tiles):
+            for tid in range(self.arch.ntiles):
+                if tiles[tid] is None: continue
                 try:
-                    self.place_work(tid, next(gen))
+                    self.place_work(tid, next(tiles[tid]))
                     placed += 1
                 except StopIteration:
-                    pass
+                    tiles[tid] = None
 
             if placed == 0: break
             self.step()
 
+
     def map2d_place(self, vtiles : list[list[Iterator[WorkItem]]]):
         trows, tcols = len(vtiles), len(vtiles[0])
         logging.debug(f'map2d_place: {trows}x{tcols} vtiles')
-        tiles = []
+        tiles = [[None for _ in range(self.arch.ncols)] for _ in range(self.arch.nrows)]
 
         r = 0
         for m in blkdiv(trows, self.arch.nrows):
             tiles.append([])
             c = 0
             for n in blkdiv(tcols, self.arch.ncols):
-                tiles[-1].append(itertools.chain(*[
+                tiles[r][c] = itertools.chain(*[
                     vtiles[r + i][c + j]
                     for i in range(m)
-                    for j in range(n)]))
+                    for j in range(n)])
 
                 c += n
             r += m
 
         while True:
             placed = 0
-            for r, row in enumerate(tiles):
-                for c, gen in enumerate(row):
+            for r in range(self.arch.nrows):
+                for c in range(self.arch.ncols):
+                    if tiles[r][c] is None: continue
                     tid = r * self.arch.ncols + c
                     try:
-                        wi = next(gen)
-                        self.place_work(tid, wi)
+                        self.place_work(tid, next(tiles[r][c]))
                         placed += 1
                     except StopIteration:
-                        pass
+                        tiles[r][c] = None
 
             if placed == 0: break
             self.step()
@@ -392,8 +394,10 @@ class StepCounter(SimBase):
     def __init__(self, arch : Arch, **kwargs):
         super().__init__(arch)
         self.cur_step = [0 for _ in range(arch.ntiles)]
+        self.flops = 0
 
-    def place_work(self, tid, wl : WorkItem):
+    def place_work(self, tid, wi : WorkItem):
+        # self.flops += wi.flops
         self.cur_step[tid] += 1
 
     def step(self): pass

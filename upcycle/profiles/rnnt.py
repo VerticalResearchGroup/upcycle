@@ -23,15 +23,18 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     tile = ops.matmul.choose_tile(arch, mm)
     rkblk, ckblk = blk2d(mm.k)
 
+    def inner_loop(bn, bk):
+        return (
+            tile(arch, mm, ins, outs, False, li, bm1, bn2, bk2)
+            for li in Slice(0, mm.l).indices
+            for bm1 in Slice(0, mm.m).blkslice(1)
+            for bn2 in bn.subslice(tile.tn * 4)
+            for bk2 in bk.subslice(tile.tk)
+        )
+
     sim.map2d_place([
         [
-            (
-                tile(arch, mm, ins, outs, False, li, bm1, bn2, bk2)
-                for li in Slice(0, mm.l).indices
-                for bm1 in Slice(0, mm.m).blkslice(1)
-                for bn2 in bn1.subslice(tile.tn * 4)
-                for bk2 in bk1.subslice(tile.tk)
-            )
+            inner_loop(bn1, bk1)
             for bn1 in bn0.blkslice(8)
             for bk1 in bk0.blkslice(ckblk)
         ]
@@ -61,15 +64,18 @@ def rnnt_hu_mm(arch : Arch, mm : ops.Matmul, sim : M.SimBase):
     tile = ops.matmul.choose_tile(arch, mm)
     rkblk, ckblk = blk2d(mm.k)
 
+    def inner_loop(bl, bm, bn, bk):
+        return (
+            tile(arch, mm, ins, outs, False, li, bm1, bn1, bk2)
+            for li in bl.indices
+            for bm1 in bm.subslice(tile.tm * 4)
+            for bn1 in bn.subslice(tile.tn * 4)
+            for bk2 in bk.subslice(tile.tk)
+        )
+
     sim.map2d_place([
         [
-            (
-                tile(arch, mm, ins, outs, False, li, bm1, bn1, bk2)
-                for li in bl1.indices
-                for bm1 in bm0.subslice(tile.tm * 4)
-                for bn1 in bn0.subslice(tile.tn * 4)
-                for bk2 in bk1.subslice(tile.tk)
-            )
+            inner_loop(bl1, bm0, bn0, bk1)
             for bl1 in bl0.blkslice(1)
             for bn0 in Slice(0, mm.n).blkslice(16)
             for bk1 in bk0.blkslice(ckblk)

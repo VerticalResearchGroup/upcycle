@@ -40,7 +40,7 @@ def blkdiv(n, b):
     nn = n // b
     for i in range(b):
         r = nn + (1 if i < n % b else 0)
-        yield r
+        if r > 0: yield r
 
 def blkdivn(n, b):
     """Divide n into b blocks of equal size.
@@ -103,13 +103,14 @@ class Slice:
     def subslice(self, chunksize):
         assert self.step == 1
         for i in range(self.start, self.stop, chunksize):
-            yield Slice(i, min(self.stop, i + chunksize), 1)
+            s = Slice(i, min(self.stop, i + chunksize), 1)
+            if len(s) > 0: yield s
 
     def blkslice(self, nblks):
         i = self.start
         for n in blkdiv(len(self), nblks):
-            if n == 0: continue
-            yield Slice(i, i + n, 1)
+            s = Slice(i, i + n, 1)
+            if len(s) > 0: yield s
             i += n
 
         assert i == self.stop

@@ -16,16 +16,19 @@ def place_ssdrn34_l17(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
     tile = ops.conv.choose_fwd_tile(arch, conv)
 
+    def inner_loop(bn, bp, bq, bk):
+        return (
+            tile(arch, conv, ins, outs, False, ns, (bp1, bq1), bc1, bk2)
+            for bp1 in bp.subslice(tile.tp)
+            for bq1 in bq.subslice(tile.tq)
+            for ns in bn.subslice(1)
+            for bk2 in bk.subslice(tile.tk)
+            for bc1 in Slice(0, conv.c).subslice(tile.tc)
+        )
+
     sim.map2d_place([
         [
-            [
-                tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
-                for bp1 in bp0.subslice(tile.tp)
-                for bq1 in bq0.subslice(tile.tq)
-                for ni in bn0.indices
-                for bk2 in bk1.subslice(tile.tk)
-                for bc1 in Slice(0, conv.c).subslice(tile.tc)
-            ]
+            inner_loop(bn0, bp0, bq0, bk1)
             for bk1 in bk0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(4)
             for bn0 in Slice(0, conv.n).blkslice(4)
@@ -41,16 +44,19 @@ def place_ssdrn34_l17_b1(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
     tile = ops.conv.choose_fwd_tile(arch, conv)
 
+    def inner_loop(bn, bp, bq, bk):
+        return (
+            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            for bp1 in bp.subslice(tile.tp)
+            for bq1 in bq.subslice(tile.tq)
+            for ni in bn.indices
+            for bk2 in bk.subslice(tile.tk)
+            for bc1 in Slice(0, conv.c).subslice(tile.tc)
+        )
+
     sim.map2d_place([
         [
-            [
-                tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
-                for bp1 in bp0.subslice(tile.tp)
-                for bq1 in bq0.subslice(tile.tq)
-                for ni in bn0.indices
-                for bk2 in bk1.subslice(tile.tk)
-                for bc1 in Slice(0, conv.c).subslice(tile.tc)
-            ]
+            inner_loop(bn0, bp0, bq0, bk1)
             for bk1 in bk0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(16)
             for bn0 in Slice(0, conv.n).blkslice(1)
@@ -66,16 +72,19 @@ def place_ssdrn34_300_l17_b16(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
     tile = ops.conv.choose_fwd_tile(arch, conv)
 
+    def inner_loop(bn, bp, bq, bk):
+        return (
+            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            for bp1 in bp.subslice(tile.tp)
+            for bq1 in bq.subslice(tile.tq * 2)
+            for ni in bn.indices
+            for bk2 in bk.subslice(tile.tk)
+            for bc1 in Slice(0, conv.c).subslice(tile.tc)
+        )
+
     sim.map2d_place([
         [
-            [
-                tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
-                for bp1 in bp0.subslice(tile.tp)
-                for bq1 in bq0.subslice(tile.tq * 2)
-                for ni in bn1.indices
-                for bk2 in bk1.subslice(tile.tk)
-                for bc1 in Slice(0, conv.c).subslice(tile.tc)
-            ]
+            inner_loop(bn1, bp0, bq0, bk1)
             for bk1 in bk0.blkslice(2)
             for bn1 in bn0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(8)
@@ -93,16 +102,19 @@ def place_ssdrn34_300_l95_b16(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
     tile = ops.conv.choose_fwd_tile(arch, conv)
 
+    def inner_loop(bn, bp, bq, bk):
+        return (
+            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            for bp1 in bp.subslice(tile.tp)
+            for bq1 in bq.subslice(tile.tq * 2)
+            for ni in bn.indices
+            for bk2 in bk.subslice(tile.tk * 2)
+            for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
+        )
+
     sim.map2d_place([
         [
-            (
-                tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
-                for bp1 in bp0.subslice(tile.tp)
-                for bq1 in bq0.subslice(tile.tq * 2)
-                for ni in bn1.indices
-                for bk2 in bk1.subslice(tile.tk * 2)
-                for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
-            )
+            inner_loop(bn1, bp0, bq0, bk1)
             for bk1 in bk0.blkslice(2)
             for bn1 in bn0.blkslice(4)
             for bq0 in Slice(0, conv.so[1]).blkslice(8)

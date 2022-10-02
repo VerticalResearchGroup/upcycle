@@ -56,7 +56,7 @@ class Conv(Operator):
 
     @property
     def flops(self):
-        return self.n * np.prod(self.so) * np.prod(self.sf) * self.k * self.c * 2
+        return self.n * self.outspatial * self.filsize * self.k * self.c * 2
 
     @property
     def total_load_bytes(self):

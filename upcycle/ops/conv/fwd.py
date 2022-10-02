@@ -44,7 +44,7 @@ class ConvTile(M.WorkItem):
 
     @functools.cached_property
     def flops(self):
-        return np.prod([len(x) for x in self.ss]) * len(self.ks) * len(self.cs) * np.prod(self.op.filsize) * 2
+        return len(self.ns) * np.prod([len(x) for x in self.ss]) * len(self.ks) * len(self.cs) * self.op.filsize * 2
 
     @property
     def read_trace(self):
