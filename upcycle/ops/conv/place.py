@@ -71,8 +71,8 @@ def place_conv3d_default(arch : Arch, conv : Conv, sim : M.SimBase):
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
-    [ConvDi(None, None, None, None, None, None, None, (1, 1), None, None, None, None),
-    ConvDi(None, None, None, None, None, None, None, (1, 1, 1), None, None, None, None)])
+    [Conv(None, None, None, None, None, None, None, (1, 1), None, None, None, None),
+    Conv(None, None, None, None, None, None, None, (1, 1, 1), None, None, None, None)])
 def place_conv_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
     mm = matmul.Matmul(
