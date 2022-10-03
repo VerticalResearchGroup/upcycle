@@ -9,6 +9,7 @@ import multiprocessing
 import time
 import argparse
 import tqdm
+import pandas as pd
 
 blue = '\x1b[38;5;39m'
 green = '\033[92m'
@@ -48,7 +49,7 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
     cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
     logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
-def simulate_apps_par(parallel : int, arch : U.Arch, apps : list[U.apps.Trace], verbose=True):
+def simulate_apps_par(parallel : int, arch : U.Arch, apps : dict[str, U.apps.Trace], verbose=True):
     counter = multiprocessing.Value('i', 0)
     lock = multiprocessing.Lock()
 
@@ -56,7 +57,7 @@ def simulate_apps_par(parallel : int, arch : U.Arch, apps : list[U.apps.Trace], 
         parallel, initializer=init_pool_processes, initargs=(counter, lock))
     tt0 = time.perf_counter_ns()
 
-    unique_ops = sum(map(lambda app: list(app.unique_ops), apps), [])
+    unique_ops = sum(map(lambda app: list(app.unique_ops), apps.values()), [])
     logger.info(f'Counting steps for {len(unique_ops)} ops...')
     total_steps = sum(pool.map(functools.partial(U.model.num_steps, arch), unique_ops))
     logger.info(f'Counted {total_steps} steps')
@@ -81,32 +82,34 @@ def simulate_apps_par(parallel : int, arch : U.Arch, apps : list[U.apps.Trace], 
 
     return tt1 - tt0, results
 
-apps = [
-    U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
-    U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
-    U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
-    U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
 
-    U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
-    U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
-    U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
-    U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
 
-    U.apps.mlperf_v1_apps['unet'].default_infer_online(),
-    U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
-    U.apps.mlperf_v1_apps['unet'].default_train_small(),
-    U.apps.mlperf_v1_apps['unet'].default_train_large(),
+    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
 
-    U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
-    U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
-    U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
-    U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
 
-    U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
-    U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
-    U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
-    U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
-]
+    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+}
+
+appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
@@ -114,11 +117,70 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-v', '--verbose', action='store_true')
     args = parser.parse_args()
-    arch = U.arch.arch_from_cli(args)
+    arch : U.Arch = U.arch.arch_from_cli(args)
 
     logging.info(f'Arch: {arch}')
-
     time_ns, results = simulate_apps_par(args.parallel, arch, apps, args.verbose)
 
-    for op, stats in results.items():
-        logging.info(f'{op}: {stats.cycles} cyc')
+    infer_names = list(apps.keys())
+    infer_gops = [int(app.flops / 1e12) for app in apps.values()]
+    infer_on_perf = []
+    infer_on_eff = []
+    infer_off_perf = []
+    infer_off_eff = []
+
+    train_names = list(apps.keys())
+    train_gops = [int(app.flops / 1e12) for app in apps.values()]
+    train_small_perf = []
+    train_small_eff = []
+    train_large_perf = []
+    train_large_eff = []
+
+    def gops(appname):
+        if appname not in apps: return None
+        trace = apps[appname]
+        return int(trace.flops / 1e9)
+
+    def perf(appname):
+        if appname not in apps: return None
+        trace = apps[appname]
+        total_cyc = 0
+        for i, op in enumerate(trace.oplist):
+            result = results[op]
+            total_cyc += result.cycles
+        return 1 / (total_cyc / arch.freq)
+
+    def eff(appname):
+        if appname not in apps: return None
+        trace = apps[appname]
+        total_cyc = 0
+        for i, op in enumerate(trace.oplist):
+            result = results[op]
+            total_cyc += result.cycles
+        return trace.flops / total_cyc / arch.ntiles / arch.peak_opc(trace.oplist[0].dtype) * 100
+
+    infer_dframe = pd.DataFrame({
+        'Name': appnames,
+        'GOPs': [gops(f'{name}-infer-online') for name in appnames],
+        'On. Perf.': [perf(f'{name}-infer-online') for name in appnames],
+        'On. Eff. (%)': [eff(f'{name}-infer-online') for name in appnames],
+        'Off. Perf.': [perf(f'{name}-infer-offline') for name in appnames],
+        'Off. Eff. (%)': [eff(f'{name}-infer-offline') for name in appnames],
+    })
+
+    train_dframe = pd.DataFrame({
+        'Name': appnames,
+        'GOPs': [gops(f'{name}-train-small') for name in appnames],
+        'Small Perf.': [perf(f'{name}-train-small') for name in appnames],
+        'Small Eff. (%)': [eff(f'{name}-train-small') for name in appnames],
+        'Large Perf.': [perf(f'{name}-train-large') for name in appnames],
+        'Large Eff. (%)': [eff(f'{name}-train-large') for name in appnames]
+    })
+
+
+    print('Inference Data:')
+    print(infer_dframe)
+    print()
+    print('Training Data:')
+    print(train_dframe)
+    print()
