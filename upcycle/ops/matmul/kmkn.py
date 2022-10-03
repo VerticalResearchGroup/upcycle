@@ -21,7 +21,7 @@ class MatmulTileKMKN(MatmulTile):
 
         num_loads = \
             M.nloads(self.arch, self.dtype, mss, self.op.m, kss, self.op.k, transpose=True) + \
-            sum(M.nloads(self.arch, self.type, ksss, self.op.k, nss, self.op.n)
+            sum(M.nloads(self.arch, self.dtype, ksss, self.op.k, nss, self.op.n)
                 for ksss in kss.subslice(self.ttk))
 
         exec_cyc = len(nss) * cld(len(kss), self.ttk)
