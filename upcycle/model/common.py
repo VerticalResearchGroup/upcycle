@@ -365,8 +365,8 @@ class SimBase:
                     for i in range(m)
                     for j in range(n)])
 
-                c += n
-            r += m
+                c += 1
+            r += 1
 
         while True:
             placed = 0
