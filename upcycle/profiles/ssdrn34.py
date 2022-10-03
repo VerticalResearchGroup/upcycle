@@ -46,10 +46,10 @@ def place_ssdrn34_l17_b1(arch : Arch, conv : ops.Conv, sim : M.SimBase):
 
     def inner_loop(bn, bp, bq, bk):
         return (
-            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            tile(arch, conv, ins, outs, False, ns, (bp1, bq1), bc1, bk2)
             for bp1 in bp.subslice(tile.tp)
             for bq1 in bq.subslice(tile.tq)
-            for ni in bn.indices
+            for ns in bn.subslice(1)
             for bk2 in bk.subslice(tile.tk)
             for bc1 in Slice(0, conv.c).subslice(tile.tc)
         )
@@ -74,10 +74,10 @@ def place_ssdrn34_300_l17_b16(arch : Arch, conv : ops.Conv, sim : M.SimBase):
 
     def inner_loop(bn, bp, bq, bk):
         return (
-            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            tile(arch, conv, ins, outs, False, ns, (bp1, bq1), bc1, bk2)
             for bp1 in bp.subslice(tile.tp)
             for bq1 in bq.subslice(tile.tq * 2)
-            for ni in bn.indices
+            for ns in bn.subslice(1)
             for bk2 in bk.subslice(tile.tk)
             for bc1 in Slice(0, conv.c).subslice(tile.tc)
         )
@@ -104,10 +104,10 @@ def place_ssdrn34_300_l95_b16(arch : Arch, conv : ops.Conv, sim : M.SimBase):
 
     def inner_loop(bn, bp, bq, bk):
         return (
-            tile(arch, conv, ins, outs, False, ni, (bp1, bq1), bc1, bk2)
+            tile(arch, conv, ins, outs, False, ns, (bp1, bq1), bc1, bk2)
             for bp1 in bp.subslice(tile.tp)
             for bq1 in bq.subslice(tile.tq * 2)
-            for ni in bn.indices
+            for ns in bn.subslice(1)
             for bk2 in bk.subslice(tile.tk * 2)
             for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
         )
