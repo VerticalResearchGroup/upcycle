@@ -53,12 +53,15 @@ def place_reduction_default(arch : Arch, r : Reduce, sim : M.SimBase):
 
     ins, outs = r.make_tensors(arch)
 
+    def inner_loop(bm):
+        return (
+            ReduceTile(arch, r, ins, outs, ns, bm)
+            for ns in Slice(0, r.n).blkslice(1)
+        )
+
     sim.map2d_place([
         [
-            (
-                ReduceTile(arch, r, ins, outs, ns, bm1)
-                for ns in Slice(0, r.n).blkslice(1)
-            )
+            inner_loop(bm1)
             for bm1 in bm0.blkslice(64)
         ]
         for bm0 in Slice(0, r.m).blkslice(32)

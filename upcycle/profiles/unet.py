@@ -25,20 +25,23 @@ def place_unet_conv3d_dw(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
 
     logger.debug(f'rrblk={rrblk} csblk={csblk} ctblk={ctblk} rnblk={rnblk} cnblk={cnblk}')
 
+    def inner_loop(bn, br, bs, bt, bc, bk):
+        return (
+            tile(
+                arch, conv, ins, outs, False,
+                ns, (os, ps, qs), (br, bs, bt), ks, cs)
+
+            for ns in bn.subslice(tile.tn)
+            for ps in Slice(0, conv.so[0]).subslice(tile.tp * 2)
+            for qs in Slice(0, conv.so[1]).subslice(tile.tq * 2)
+            for os in Slice(0, conv.so[2]).subslice(tile.to * 2)
+            for cs in bc.subslice(tile.tc * 32)
+            for ks in bk.subslice(tile.tk * 32)
+        )
+
     sim.map2d_place([
         [
-            (
-                tile(
-                    arch, conv, ins, outs, False,
-                    ns, (os, ps, qs), (br0, bs1, bt1), ks, cs)
-
-                for ns in bn1.subslice(tile.tn)
-                for ps in Slice(0, conv.so[0]).subslice(tile.tp * 2)
-                for qs in Slice(0, conv.so[1]).subslice(tile.tq * 2)
-                for os in Slice(0, conv.so[2]).subslice(tile.to * 2)
-                for cs in bc0.subslice(tile.tc * 32)
-                for ks in bk1.subslice(tile.tk * 32)
-            )
+            inner_loop(bn1, br0, bs1, bt1, bc0, bk1)
             for bn1 in bn0.blkslice(cnblk)
             for bs1 in Slice(0, conv.sf[1]).blkslice(3)
             for bt1 in Slice(0, conv.sf[2]).blkslice(3)
