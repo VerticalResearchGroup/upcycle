@@ -11,51 +11,38 @@ logger = logging.getLogger(__name__)
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
-    ops.ConvDw(None, None, None, (128, 128, 128), None, (128, 128, 128), None, (3, 3, 3), 1, None, None, None))
-def place_unet_conv3d_dw(arch : Arch, conv : ops.ConvDw, sim : M.SimBase):
+    ops.Conv(None, None, None, (128, 128, 128), None, (128, 128, 128), None, (3, 3, 3), 1, None, None, None))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    ops.Conv(None, None, None, (32, 32, 32), None, (32, 32, 32), None, (3, 3, 3), 1, None, None, None))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    ops.Conv(None, None, None, (8, 8, 8), None, (8, 8, 8), None, (3, 3, 3), 1, None, None, None))
+def place_unet_conv3d_dw(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
-    tile = ops.conv.choose_dw_tile(arch, conv)
+    tile = ops.conv.choose_fwd_tile(arch, conv)
 
-    rrblk = maxpow2(conv.sf[0])
-    csblk = maxpow2(conv.sf[1])
-    ctblk = maxpow2(conv.sf[2])
+    logger.debug(f'tile = {tile}')
 
-    rnblk = 4
-    cnblk = 2
-
-    logger.debug(f'rrblk={rrblk} csblk={csblk} ctblk={ctblk} rnblk={rnblk} cnblk={cnblk}')
-
-    def inner_loop(bn, br, bs, bt, bc, bk):
+    def inner_loop(bo, bp, bq, bn, bk):
         return (
-            tile(
-                arch, conv, ins, outs, False,
-                ns, (os, ps, qs), (br, bs, bt), ks, cs)
-
-            for ns in bn.subslice(tile.tn)
-            for ps in Slice(0, conv.so[0]).subslice(tile.tp * 2)
-            for qs in Slice(0, conv.so[1]).subslice(tile.tq * 2)
-            for os in Slice(0, conv.so[2]).subslice(tile.to * 2)
-            for cs in bc.subslice(tile.tc * 32)
-            for ks in bk.subslice(tile.tk * 32)
+            tile(arch, conv, ins, outs, False, ns, (bo1, bp1, bq1), bc1, bk2)
+            for bo1 in bo.subslice(tile.to * 2)
+            for bp1 in bp.subslice(tile.tp * 2)
+            for bq1 in bq.subslice(tile.tq * 2)
+            for ns in bn.subslice(1)
+            for bk2 in bk.subslice(tile.tk * 4)
+            for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
         )
 
     sim.map2d_place([
         [
-            inner_loop(bn1, br0, bs1, bt1, bc0, bk1)
-            for bn1 in bn0.blkslice(cnblk)
-            for bs1 in Slice(0, conv.sf[1]).blkslice(3)
-            for bt1 in Slice(0, conv.sf[2]).blkslice(3)
-            for bk1 in Slice(0, conv.k).blkslice(2)
+            inner_loop(bo0, bp0, bq0, bn0, bk1)
+            for bk1 in bk0.blkslice(2)
+            for bp0 in Slice(0, conv.so[1]).blkslice(4)
+            for bq0 in Slice(0, conv.so[2]).blkslice(8)
+            for bn0 in Slice(0, conv.n).blkslice(1)
         ]
-        for bn0 in Slice(0, conv.n).blkslice(rnblk)
-        for br0 in Slice(0, conv.sf[0]).blkslice(3)
-        for bc0 in Slice(0, conv.c).blkslice(2)
+        for bk0 in Slice(0, conv.k).blkslice(4)
+        for bo0 in Slice(0, conv.so[0]).blkslice(8)
     ])
-
-    sim.barrier()
-
-    M.place_op(
-        arch,
-        ops.Reduce(conv.dtype, False, rnblk * cnblk, len(outs[0])),
-        sim,
-        check_flops=False)
