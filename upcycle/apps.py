@@ -272,6 +272,11 @@ def ssdrn34_300(dtype, n=1):
         ops.Conv(dtype, True, n, (1, 1), 256, (1, 1), 324, (3, 3), 3, 1, False),
     ])
 
+def ssd_weirdconv(dtype, n=1):
+    return Trace([
+        ops.Conv(dtype, True, n, (5, 5), 128, (3, 3), 256, (3, 3), 1, 0, False)
+    ])
+
 def unet3d(dtype, n=1):
     #
     # N.B. The first and last few layers of unet are 128x128x128 sized inputs /
@@ -291,10 +296,11 @@ def unet3d(dtype, n=1):
         # N.B. Original spatial dimensions are 128x128x128
         ops.Conv(dtype, True, n, (32, 32, 32), 1, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 32, (16, 16, 16), 64, (3, 3, 3), 2, 1, False),
     ] * (4*4*4) + [
-        ops.Conv(dtype, True, n, (128, 128, 128), 32, (64, 64, 64), 64, (3, 3, 3), 2, 1, False),
-        ops.Conv(dtype, True, n, (64, 64, 64), 64, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (64, 64, 64), 64, (32, 32, 32), 128, (3, 3, 3), 2, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 64, (16, 16, 16), 128, (3, 3, 3), 2, 1, False),
+    ] * (2*2*2) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (16, 16, 16), 256, (3, 3, 3), 2, 1, False),
         ops.Conv(dtype, True, n, (16, 16, 16), 256, (16, 16, 16), 256, (3, 3, 3), 1, 1, False),
@@ -308,9 +314,10 @@ def unet3d(dtype, n=1):
         ops.Conv(dtype, True, n, (16, 16, 16), 256, (16, 16, 16), 256, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 256, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (64, 64, 64), 128, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
-        ops.Conv(dtype, True, n, (64, 64, 64), 64, (64, 64, 64), 64, (3, 3, 3), 1, 1, False),
     ] + [
+        ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
+        ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
+    ] * (2*2*2) + [
         # N.B. Original spatial dimensions are 128x128x128
         ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
@@ -441,6 +448,10 @@ mlperf_v1_apps = {
         testconv, Dtype.I8,
         testconv, Dtype.FP16,
         BatchSizes(1, 8, 1, 8)),
+    'ssd_weirdconv': App(
+        ssd_weirdconv, Dtype.I8,
+        ssd_weirdconv, Dtype.FP16,
+        BatchSizes(1, 16, 1, 16)),
     'resnet50': App(
         resnet50, Dtype.I8,
         resnet50, Dtype.FP16,

@@ -175,9 +175,14 @@ def place_convdi_stride1(arch : Arch, conv : ConvDi, sim : M.SimBase):
         conv.so, conv.k,
         conv.si, conv.c,
         conv.sf, conv.stride,
-        conv.pad, not conv.tr_w, True)
+        int(np.floor((conv.si[0] - conv.so[0] + conv.sf[0] - 1) / 2)),
+        not conv.tr_w, True)
 
-    assert new_conv.flops == conv.flops
+    # N.B. In the case that the output is smaller than the input (filter size >
+    # 1), we will end up computing more flops using the forward pass than
+    # actually needed. This will make the flop counts mismatch.
+    #
+    # assert new_conv.flops == conv.flops, new_conv
     return M.place_op(arch, new_conv, sim, False)
 
 @M.register_placement(
