@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
     ops.Conv(None, None, None, (32, 32, 32), None, (32, 32, 32), None, (3, 3, 3), 1, None, None, None))
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
+    ops.Conv(None, None, None, (16, 16, 16), None, (16, 16, 16), None, (3, 3, 3), 1, None, None, None))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
+    ops.Conv(None, None, None, (16, 16, 16), None, (8, 8, 8), None, (3, 3, 3), 1, None, None, None))
+@M.register_placement(
+    [OracleArch, BgroupArch, FbcastArch, HierArch],
     ops.Conv(None, None, None, (8, 8, 8), None, (8, 8, 8), None, (3, 3, 3), 1, None, None, None))
 def place_unet_conv3d_dw(arch : Arch, conv : ops.Conv, sim : M.SimBase):
     ins, outs = conv.make_tensors(arch)
