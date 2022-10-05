@@ -20,9 +20,16 @@ class Matmul(Operator):
     def flops(self): return self.l * self.m * self.n * self.k * 2
 
     @property
-    def total_load_bytes(self):
-        return (self.l * self.m * self.k + self.l * self.n * self.k) * \
-            Dtype.sizeof(self.dtype)
+    def total_read_bytes(self) -> int:
+        return self.l * (self.m * self.k + self.n * self.k) * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return self.l * self.n * self.k * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.l * self.m * self.n * Dtype.sizeof(self.dtype)
 
     def make_tensors(self, arch : Arch):
         l = self.l

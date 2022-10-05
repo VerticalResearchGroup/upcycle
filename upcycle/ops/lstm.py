@@ -33,7 +33,17 @@ class LstmCell(Operator):
     def flops(self): return self.mm.flops
 
     @property
-    def total_load_bytes(self): return self.mm.total_load_bytes
+    def total_read_bytes(self) -> int:
+        return self.n * (self.d + self.h) * Dtype.sizeof(self.dtype) + \
+            (self.d + self.h) * (self.d + self.h) * 4 * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return (self.d + self.h) * (self.d + self.h) * 4 * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.n * (self.d + self.h) * Dtype.sizeof(self.dtype)
 
     def make_tensors(self, arch): return [], []
 
@@ -81,6 +91,19 @@ class LstmCellBwd(LstmCell):
 
     @property
     def flops(self): return self.mm.flops * 2
+
+    @property
+    def total_read_bytes(self) -> int:
+        return 2 * self.n * (self.d + self.h) * Dtype.sizeof(self.dtype) + \
+            (self.d + self.h) * (self.d + self.h) * 4 * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return self.n * (self.d + self.h) * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.total_read_bytes
 
     def __repr__(self):
         return f'LstmCellBwd[{self.dtype}][{self.mm.layout_str(self.tr_xh, self.tr_wu)}]({self.n}, {self.d}, {self.h})'

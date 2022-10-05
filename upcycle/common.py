@@ -191,9 +191,15 @@ class Operator:
     def flops(self) -> int: raise NotImplementedError()
 
     @property
-    def total_load_bytes(self) -> int: raise NotImplementedError()
+    def total_read_bytes(self) -> int: raise NotImplementedError()
 
     @property
-    def ami(self) -> float: return self.flops / self.total_load_bytes
+    def total_weight_bytes(self) -> int: raise NotImplementedError()
+
+    @property
+    def total_write_bytes(self) -> int: raise NotImplementedError()
+
+    @property
+    def ami(self) -> float: return self.flops / self.total_read_bytes
 
     def make_tensors(self, arch) -> tuple[list, list]: raise NotImplementedError()

@@ -59,11 +59,16 @@ class Conv(Operator):
         return self.n * self.outspatial * self.filsize * self.k * self.c * 2
 
     @property
-    def total_load_bytes(self):
-        return (
-            self.n * np.prod(self.si) * self.c +
-            np.prod(self.sf) * self.k * self.c) * \
-            Dtype.sizeof(self.dtype)
+    def total_read_bytes(self) -> int:
+        return (self.n * self.inspatial * self.c + self.filsize * self.k * self.c) * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return self.filsize * self.k * self.c * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.n * self.outspatial * self.k * Dtype.sizeof(self.dtype)
 
     def make_tensors(self, arch : Arch):
         ti = M.Tensor(arch, 1, self.dtype, (self.n, *tuple(d + 2 * self.pad for d in self.si), self.c))
@@ -84,6 +89,18 @@ class ConvDi(Conv):
     def from_forward(c : Conv):
         return ConvDi(c.dtype, False, c.n, c.si, c.c, c.so, c.k, c.sf, c.stride, c.pad, c.tr_w)
 
+    @property
+    def total_read_bytes(self) -> int:
+        return (self.n * self.outspatial * self.k + self.filsize * self.k * self.c) * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return self.filsize * self.k * self.c * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.n * self.inspatial * self.c * Dtype.sizeof(self.dtype)
+
     def make_tensors(self, arch : Arch):
         [tdi, tw], [tdo] = super().make_tensors(arch)
         return [tw, tdo], [tdi]
@@ -97,6 +114,18 @@ class ConvDw(Conv):
     @staticmethod
     def from_forward(c : Conv):
         return ConvDw(c.dtype, False, c.n, c.si, c.c, c.so, c.k, c.sf, c.stride, c.pad, c.tr_w)
+
+    @property
+    def total_read_bytes(self) -> int:
+        return (self.n * self.inspatial * self.c + self.n * self.outspatial * self.k) * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return self.n * self.inspatial * self.c * Dtype.sizeof(self.dtype)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return self.filsize * self.k * self.c * Dtype.sizeof(self.dtype)
 
     def make_tensors(self, arch : Arch):
         [ti, tdw], [tdo] = super().make_tensors(arch)
