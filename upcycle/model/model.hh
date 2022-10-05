@@ -95,7 +95,7 @@ struct AffineTile {
 };
 
 struct TileMask {
-    uint64_t mask[32] = {0};
+    uint64_t mask[64] = {0};
 
     void set(uint64_t tid) {
         assert(tid < 2048 && "tid out of range");
