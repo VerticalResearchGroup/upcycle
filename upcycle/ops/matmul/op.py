@@ -48,6 +48,11 @@ class Matmul(Operator):
             (False, True): 'MKNK',
             (True, False): 'KMKN',
             (True, True): 'KNMK',
+            (None, False): '*KN',
+            (None, True): '*NK',
+            (False, None): 'MK*',
+            (True, None): 'KM*',
+            (None, None): '*',
         }[(tr_a, tr_b)]
 
     def __repr__(self):
