@@ -24,6 +24,8 @@ class HierSim(Sim):
                 self.arch.l2.lbits(self.arch.line_size))
             for _ in range(self.arch.ngroups)
         ]
+        self.kwstats['l2_accesses'] = 0
+        self.kwstats['l2_hits'] = 0
 
 def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
     dest_map = sim.dest_maps.get(step, None)
@@ -32,6 +34,10 @@ def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
     l2_dl = c_model.DestList()
+
+    l2_accesses = 0
+    l2_hits = 0
+    llc_accesses = 0
 
     # 1. For each line, determine if the local L2 needs it, and then count
     #    L2 -> L1 traffic.
@@ -45,9 +51,11 @@ def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim
 
         for gid, tids in groups.items():
             if len(tids) == 0: continue
+            l2_accesses += 1
             hit = sim.l2[gid].lookup(l)
             sim.l2[gid].insert(l)
             if not hit: l2_dl.set(l, arch.addr_l2_tid(l, gid))
+            else: l2_hits += 1
 
             net.count_multiroute(
                 arch.addr_l2_coords(l, gid),
@@ -57,6 +65,7 @@ def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim
     # 2. Now that we've pruned the dest list down to the L2s that need the
     #    lines, we can count LLC -> L2 traffic.
     for l, mask in l2_dl.dests.items():
+        llc_accesses += 1
         net.count_multiroute(
             arch.addr_llc_coords(l),
             get_dests(arch, mask),
@@ -70,6 +79,9 @@ def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim
     traffic = noc.zero_traffic(arch)
     traffic[:, :, :] += net.to_numpy()
 
+    sim.kwstats['l2_accesses'] += l2_accesses
+    sim.kwstats['l2_hits'] += l2_hits
+    sim.kwstats['llc_accesses'] += llc_accesses
 
     return traffic
 

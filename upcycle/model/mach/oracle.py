@@ -16,9 +16,11 @@ def simulate_oracle_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
     dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
     net = noc.Noc.from_arch(arch)
+    llc_accesses = 0
 
     if dest_map is not None:
         for line, mask in dest_map.dests.items():
+            llc_accesses += 1
             net.count_multiroute(
                 arch.addr_llc_coords(line),
                 get_dests(arch, mask),
@@ -28,6 +30,7 @@ def simulate_oracle_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f'+ Noc simulation took {t1 - t0}s')
 
+    sim.kwstats['llc_accesses'] += llc_accesses
     return net.to_numpy()
 
 def simulate_oracle_noc2(arch : Arch, kwstats : dict, dl : c_model.DestList):

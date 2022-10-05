@@ -315,6 +315,7 @@ class SimBase:
     """
     def __init__(self, arch : Arch):
         self.arch = arch
+        self.kwstats = {}
 
     def place_work(self, tid, wl : WorkItem): raise NotImplementedError()
 
@@ -429,8 +430,6 @@ class Sim(SimBase):
         self.exec_cycles = {}
         self.perfect_exec_cycles = {}
         self.rss = [[] for _ in range(arch.ntiles)]
-        self.l1_accesses = 0
-        self.l1_hits = 0
         self.flops = 0
         self.global_step = 0
         self.cur_step = [0 for _ in range(arch.ntiles)]
@@ -444,8 +443,10 @@ class Sim(SimBase):
         self.total_traffic = noc.zero_traffic(arch)
         self.cycles = 0
         self.compute_cyc = 0
-        self.kwstats = {}
         self.kwstats['rss'] = []
+        self.kwstats['l1_accesses'] = 0
+        self.kwstats['l1_hits'] = 0
+        self.kwstats['llc_accesses'] = 0
 
     def log_exec_cycles(self, step, tid, ncycles, perfect):
         if step not in self.exec_cycles:
@@ -495,8 +496,8 @@ class Sim(SimBase):
                 self.log_read(step, tid, l)
 
         self.rss[tid].append(self.l1[tid].get_accesses() * self.arch.line_size)
-        self.l1_accesses += self.l1[tid].get_accesses()
-        self.l1_hits += self.l1[tid].get_hits()
+        self.kwstats['l1_accesses'] += self.l1[tid].get_accesses()
+        self.kwstats['l1_hits'] += self.l1[tid].get_hits()
 
         self.cur_step[tid] += 1
 

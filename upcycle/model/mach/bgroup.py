@@ -42,6 +42,7 @@ class BgroupNoc(noc.Noc):
         return gr * self.arch.grows + off_r, gc * self.arch.gcols + off_c
 
 
+@deprecated
 def simulate_bgroup_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
     dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
@@ -52,7 +53,7 @@ def simulate_bgroup_noc(arch : Arch, kwstats : dict, step : int, sim : SimBase):
         for line, mask in dest_map.dests.items():
             r, c = arch.addr_llc_coords(line)
             off = (np.random.randint(0, arch.grows), np.random.randint(0, arch.gcols))
-            net[r, c].inject += 1
+            net.inject(r, c, 0)
 
             groups = set()
             seen_hops = set[(noc.Router, noc.Router)]()
