@@ -477,9 +477,7 @@ class Sim(SimBase):
             logger.error(f'Perfect exec lat > exec lat! {wi.perfect_exec_lat} > {wi.exec_lat} ({wi.flops} ops)')
             logger.error(f'{wi}')
 
-        exec_lat = wi.perfect_exec_lat if self.arch.perfect_compute else wi.exec_lat
-
-        self.log_exec_cycles(step, tid, exec_lat, wi.perfect_exec_lat)
+        self.log_exec_cycles(step, tid, wi.exec_lat, wi.perfect_exec_lat)
         self.flops += wi.flops
 
         if USE_C_TRACE:
