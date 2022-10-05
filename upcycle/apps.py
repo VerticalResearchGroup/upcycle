@@ -480,7 +480,7 @@ mlperf_v1_apps = {
     'unet': App(
         unet3d, Dtype.I8,
         unet3d, Dtype.FP16,
-        BatchSizes(1, 2, 1, 2)),
+        BatchSizes(1, 2, 1, 16)),
     'rnnt': App(
         # N.B. The official MLPerf inference benchmark uses librespeech dataset
         # which has an average input length of 239, output length of 120.
