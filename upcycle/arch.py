@@ -54,10 +54,11 @@ class Arch:
     nrows : int = None
     ncols : int = None
     mapping : TileMapping = None
-    perfect_compute : bool = None
     noc_ports_per_dir : int = None
     line_size : int = None
     l1 : CacheParams = None
+    compute_scale : float = None
+    noc_scale : float = None
 
     @functools.cached_property
     def vbytes(self): return self.vbits // 8
@@ -114,10 +115,11 @@ class OracleArch(Arch):
         'nrows': 32,
         'ncols': 64,
         'mapping': TileMapping.AFFINE,
-        'perfect_compute': False,
         'noc_ports_per_dir': 1,
         'line_size': 32,
-        'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2)
+        'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
+        'compute_scale': 1.0,
+        'noc_scale': 1.0,
     }
 
 @dataclass(order=True, frozen=True)
@@ -129,10 +131,11 @@ class CoarseOracle(Arch):
         'nrows': 8,
         'ncols': 8,
         'mapping': TileMapping.AFFINE,
-        'perfect_compute': True,
         'noc_ports_per_dir': 1,
         'line_size': 32,
-        'l1': CacheParams(nbanks=1, capacity=256 * 2**10, assoc=256, rports=2)
+        'l1': CacheParams(nbanks=1, capacity=256 * 2**10, assoc=256, rports=2),
+        'compute_scale': 1.0,
+        'noc_scale': 1.0,
     }
 
 @dataclass(order=True, frozen=True)
@@ -156,10 +159,11 @@ class BgroupArch(Arch):
         'nrows': 32,
         'ncols': 64,
         'mapping': TileMapping.AFFINE,
-        'perfect_compute': False,
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
+        'compute_scale': 1.0,
+        'noc_scale': 1.0,
         'grows': 4,
         'gcols': 8
     }
@@ -180,6 +184,8 @@ class FbcastArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
+        'compute_scale': 1.0,
+        'noc_scale': 1.0,
         'max_dests': 8
     }
 
@@ -241,6 +247,8 @@ class HierArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
+        'compute_scale': 1.0,
+        'noc_scale': 1.0,
         'grows': 4,
         'gcols': 8,
         'l2': CacheParams(nbanks=None, capacity=512 * 2**10, assoc=8, rports=1),
@@ -259,7 +267,8 @@ def arch_cli_params(parser):
     parser.add_argument('--group', type=str, default=None)
     parser.add_argument('--max-dests', type=int, default=None)
     parser.add_argument('--mapping', type=str, default=None)
-    parser.add_argument('-x', '--perfect-compute', action='store_true')
+    parser.add_argument('-x', '--compute-scale', type=float, default=1.0)
+    parser.add_argument('-n', '--noc-scale', type=float, default=1.0)
 
 def arch_factory(arch_name, kwargs):
     """Factory function for creating UPCYCLE architectures."""

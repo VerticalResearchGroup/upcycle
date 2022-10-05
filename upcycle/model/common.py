@@ -502,10 +502,10 @@ class Sim(SimBase):
         self.cur_step[tid] += 1
 
     def step(self):
-        max_exec_cyc = max(self.exec_cycles[self.global_step])
-        perfect_exec_cyc = max(self.perfect_exec_cycles[self.global_step])
+        max_exec_cyc = int(max(self.exec_cycles[self.global_step]) / self.arch.compute_scale)
+        perfect_exec_cyc = int(max(self.perfect_exec_cycles[self.global_step]) / self.arch.compute_scale)
         traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
-        net_latency = np.max(traffic) / self.arch.noc_ports_per_dir
+        net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir / self.arch.noc_scale)
         self.total_traffic += traffic
 
         if logger.isEnabledFor(logging.DEBUG):
