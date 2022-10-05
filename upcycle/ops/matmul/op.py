@@ -34,6 +34,18 @@ class Matmul(Operator):
         c = M.Tensor(arch, 3, self.dtype, (l, m, n))
         return [a, b], [c]
 
+    @staticmethod
+    def layout_str(tr_a, tr_b):
+        return {
+            (False, False): 'MKKN',
+            (False, True): 'MKNK',
+            (True, False): 'KMKN',
+            (True, True): 'KNMK',
+        }[(tr_a, tr_b)]
+
+    def __repr__(self):
+        return f'Matmul[{self.dtype}][{self.layout_str(self.tr_a, self.tr_b)}]({self.l} {self.m}x{self.n}x{self.k})'
+
 @operator
 @dataclass(frozen=True)
 @register_backward(Matmul)

@@ -37,6 +37,9 @@ class LstmCell(Operator):
 
     def make_tensors(self, arch): return [], []
 
+    def __repr__(self):
+        return f'LstmCell[{self.dtype}][{self.mm.layout_str(self.tr_xh, self.tr_wu)}]({self.n}, {self.d}, {self.h})'
+
 @dataclass(frozen=True)
 class LstmCellBackend(M.WorkItem):
     @property
@@ -78,6 +81,9 @@ class LstmCellBwd(LstmCell):
 
     @property
     def flops(self): return self.mm.flops * 2
+
+    def __repr__(self):
+        return f'LstmCellBwd[{self.dtype}][{self.mm.layout_str(self.tr_xh, self.tr_wu)}]({self.n}, {self.d}, {self.h})'
 
 @M.register_placement([OracleArch, BgroupArch, FbcastArch, HierArch], LstmCellBwd)
 def place_lstmbwd_default(arch : Arch, lstm : LstmCellBwd, sim : M.SimBase):

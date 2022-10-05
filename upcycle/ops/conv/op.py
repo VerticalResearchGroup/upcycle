@@ -72,7 +72,9 @@ class Conv(Operator):
         return [ti, tw], [to]
 
     def __repr__(self):
-        return f'Conv{len(self.si) if self.si is not None else None}D(n={self.n}, i={self.si}x{self.c}+{self.pad} w={self.sf}x{self.k}x{self.c} o={self.so}x{self.k} by {self.stride})'
+        r_str = 'R' if self.rot_w else ''
+        t_str = '^T' if self.tr_w else ''
+        return f'Conv{len(self.si) if self.si is not None else None}D[{self.dtype}](n={self.n}, i={self.si}x{self.c}+{self.pad} {r_str}w{t_str}={self.sf}x{self.k}x{self.c} o={self.so}x{self.k} by {self.stride})'
 
 @operator
 @dataclass(frozen=True)

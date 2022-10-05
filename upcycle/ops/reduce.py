@@ -20,6 +20,10 @@ class Reduce(Operator):
 
     def make_tensors(self, arch): return [], []
 
+
+    def __repr__(self):
+        return f'Reduce[{self.dtype}]({self.n}x{self.m})'
+
 @dataclass(frozen=True)
 class ReduceTile(M.WorkItem):
     ns : Slice
