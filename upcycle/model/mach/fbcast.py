@@ -12,6 +12,7 @@ from .. import noc
 
 logger = logging.getLogger(__name__)
 
+@deprecated
 def simulate_fbcast_noc(arch : FbcastArch, kwstats : dict, step : int, sim : SimBase):
     dest_map = sim.dest_maps.get(step, None)
     t0 = time.perf_counter()
