@@ -254,7 +254,13 @@ class HierArch(Arch):
         'l2': CacheParams(nbanks=None, capacity=512 * 2**10, assoc=8, rports=1),
     }
 
-
+def ntiles_to_geom(ntiles : int):
+    return {
+        512: '16,32',
+        1024: '32,32',
+        2048: '32,64',
+        4096: '64,64'
+    }[ntiles]
 
 def arch_cli_params(parser):
     parser.add_argument('-r', '--arch', type=str, default='hier')
