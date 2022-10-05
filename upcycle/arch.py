@@ -180,7 +180,6 @@ class FbcastArch(Arch):
         'nrows': 32,
         'ncols': 64,
         'mapping': TileMapping.AFFINE,
-        'perfect_compute': False,
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
@@ -243,7 +242,6 @@ class HierArch(Arch):
         'nrows': 32,
         'ncols': 64,
         'mapping': TileMapping.AFFINE,
-        'perfect_compute': False,
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
@@ -290,11 +288,11 @@ def arch_factory(arch_name, kwargs):
     args = arch_cls.defaults.copy()
     keys = set(args.keys())
 
-    if kwargs['geom'] is not None: args['nrows'], args['ncols'] = map(int, kwargs['geom'].split(','))
-    if kwargs['l1'] is not None: kwargs['l1'] = CacheParams.from_str(kwargs['l1'])
-    if kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
-    if kwargs['mapping'] is not None: kwargs['mapping'] = TileMapping.from_str(kwargs['mapping'])
-    if kwargs['noc_ports'] is not None: kwargs['noc_ports_per_dir'] = kwargs['noc_ports']
+    if 'geom' in kwargs and kwargs['geom'] is not None: args['nrows'], args['ncols'] = map(int, kwargs['geom'].split(','))
+    if 'l1' in kwargs and kwargs['l1'] is not None: kwargs['l1'] = CacheParams.from_str(kwargs['l1'])
+    if 'l2' in kwargs and kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
+    if 'mapping' in kwargs and kwargs['mapping'] is not None: kwargs['mapping'] = TileMapping.from_str(kwargs['mapping'])
+    if 'noc_ports' in kwargs and kwargs['noc_ports'] is not None: kwargs['noc_ports_per_dir'] = kwargs['noc_ports']
 
     for k, v in kwargs.items():
         if v is not None and k in keys: args[k] = v
