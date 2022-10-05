@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import upcycle as U
+import os
 import sys
 import functools
 import numpy as np
@@ -69,7 +70,6 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     total_steps = sum(pool.starmap(U.model.num_steps, arch_ops))
     logger.info(f'Counted {total_steps} steps')
 
-    exit(0)
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 
     result = pool.starmap_async(
@@ -89,6 +89,22 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     tt1 = time.perf_counter_ns()
 
     return tt1 - tt0, results
+
+def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
+    cyc = result.cycles
+    l1_accesses = result.kwstats['l1_accesses']
+    l2_accesses = result.kwstats['l2_accesses']
+    llc_accesses = result.kwstats['llc_accesses']
+
+    f.write(f'{op}:')
+    f.write(f'    cycles: {cyc}')
+    f.write(f'    l1_accesses: {l1_accesses}')
+    f.write(f'    l2_accesses: {l2_accesses}')
+    f.write(f'    llc_accesses: {llc_accesses}')
+    f.write(f'    total_read_bytes: {op.total_read_bytes}')
+    f.write(f'    total_weight_bytes: {op.total_weight_bytes}')
+    f.write(f'    total_write_bytes: {op.total_write_bytes}')
+
 
 apps : dict[str, U.apps.Trace] = {
     'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
@@ -128,9 +144,22 @@ archs = {
             noc_scale=ns))
     for ntiles in [512, 1024, 2048, 4096]
     for vbits in [256, 512, 1024]
-    for cs in [0.5, 1, 2, 10, 100, 0]
-    for ns in [0.5, 1, 2, 10, 100, 0]
+    for cs in [1]
+    for ns in [1]
 }
+
+archs.update({
+    f'upcycle-{ntiles}-{vbits}-{cs}x-{ns}n':
+        U.arch.arch_factory('hier', dict(
+            vbits=vbits,
+            geom=U.arch.ntiles_to_geom(ntiles),
+            compute_scale=cs,
+            noc_scale=ns))
+    for ntiles in [2048]
+    for vbits in [512]
+    for cs in [0.5, 2, 10, 100, 0]
+    for ns in [0.5, 2, 10, 100, 0]
+})
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simulate an application')
@@ -139,3 +168,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     time_ns, results = simulate_apps_par(args.parallel, archs, apps, args.verbose)
+
+    os.makedirs('./results', exist_ok=True)
+
+    for archname, arch in archs.items():
+        with open(f'./results/{archname}.yaml', 'w') as f:
+            for ((a, op), result) in results:
+                if a is arch: record_result_to_yaml(f, op, result)
+
+
