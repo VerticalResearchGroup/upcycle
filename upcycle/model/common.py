@@ -527,6 +527,8 @@ class Sim(SimBase):
         if self.lock is not None and self.counter is not None:
             with self.lock: self.counter.value += 1
 
+        del self.dest_maps[self.global_step]
+        self.dest_maps[self.global_step] = None
         self.global_step += 1
 
     def drain(self):
