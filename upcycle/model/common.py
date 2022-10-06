@@ -366,10 +366,14 @@ class SimBase:
                 vc = 0
                 for c, nc in enumerate(blkdiv(tcols, self.arch.ncols)):
                     if nr == 0 or nc == 0: continue
-                    tiles[r][c] = itertools.chain(*[
-                        vtiles[vr + i][vc + j]
-                        for i in range(nr)
-                        for j in range(nc)])
+                    gens = []
+                    for i in range(nr):
+                        for j in range(nc):
+                            if vr + i >= len(vtiles): continue
+                            if vc + j >= len(vtiles[vr + i]): continue
+                            gens.append(vtiles[vr + i][vc + j])
+
+                    tiles[r][c] = itertools.chain(*gens)
 
                     vc += nc
                 vr += nr
@@ -390,9 +394,14 @@ class SimBase:
                 self.step()
         except IndexError:
             logger.error(f'Error occured in map2d_place!')
-            logger.error(f'vtiles: {trows}x{tcols}')
-            logger.error(f'Offending op: {self.op}')
-            logger.error(f'Arch: {self.arch}')
+            logger.error(f'    vtiles: {trows}x{tcols}')
+            logger.error(f'    Offending op: {self.op}')
+            logger.error(f'    Arch: {self.arch}')
+            logger.error(f'    [{r}, {c}] -> ({vr} +{nr}, {vc} +{nc}) -- {trows} {tcols}')
+            logger.error(f'    len(vtiles) = {len(vtiles)}')
+            logger.error(f'    len(vtiles[0]) = {len(vtiles[0])}')
+            logger.error(f'    len(vtiles[vr]) = {len(vtiles[vr])}')
+            raise
 
 
     def barrier(self): raise NotImplementedError()
