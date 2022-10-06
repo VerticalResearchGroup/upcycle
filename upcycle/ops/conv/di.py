@@ -146,7 +146,7 @@ class ConvDiTile256FP16KC(ConvDiTile):
     tc = matmul.MatmulTile256KMNKFP16.tm # M
     tk = matmul.MatmulTile256KMNKFP16.tk # K
     ttk = matmul.MatmulTile256KMNKFP16.ttk
-    tn = matmul.MatmulTile256KMNKFP16.tn # N
+    tq = matmul.MatmulTile256KMNKFP16.tn # N
 
 @dataclass(frozen=True)
 class ConvDiTile512FP16KC(ConvDiTile):
@@ -155,7 +155,7 @@ class ConvDiTile512FP16KC(ConvDiTile):
     tc = matmul.MatmulTile512KMNKFP16.tm # M
     tk = matmul.MatmulTile512KMNKFP16.tk # K
     ttk = matmul.MatmulTile512KMNKFP16.ttk
-    tn = matmul.MatmulTile512KMNKFP16.tn # N
+    tq = matmul.MatmulTile512KMNKFP16.tn # N
 
 @dataclass(frozen=True)
 class ConvDiTile1024FP16KC(ConvDiTile):
@@ -164,4 +164,4 @@ class ConvDiTile1024FP16KC(ConvDiTile):
     tc = matmul.MatmulTile1024KMNKFP16.tm # M
     tk = matmul.MatmulTile1024KMNKFP16.tk # K
     ttk = matmul.MatmulTile1024KMNKFP16.ttk
-    tn = matmul.MatmulTile1024KMNKFP16.tn # N
+    tq = matmul.MatmulTile1024KMNKFP16.tn # N
