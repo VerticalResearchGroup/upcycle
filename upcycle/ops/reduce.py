@@ -66,7 +66,7 @@ def place_reduction_default(arch : Arch, r : Reduce, sim : M.SimBase):
     sim.map2d_place([
         [
             inner_loop(bm1)
-            for bm1 in bm0.blkslice(64)
+            for bm1 in bm0.blkslice(arch.ncols)
         ]
-        for bm0 in Slice(0, r.m).blkslice(32)
+        for bm0 in Slice(0, r.m).blkslice(arch.nrows)
     ])

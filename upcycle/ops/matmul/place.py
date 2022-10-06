@@ -57,7 +57,7 @@ def place_matmul_default(arch : Arch, mm : Matmul, sim : M.SimBase):
     sim.map2d_place([
         [
             inner_loop(bm0, bn0)
-            for bm0 in Slice(0, mm.m).blkslice(64)
+            for bm0 in Slice(0, mm.m).blkslice(arch.ncols)
         ]
-        for bn0 in Slice(0, mm.n).blkslice(32)
+        for bn0 in Slice(0, mm.n).blkslice(arch.nrows)
     ])
