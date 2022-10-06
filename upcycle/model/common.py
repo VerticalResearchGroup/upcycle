@@ -252,6 +252,9 @@ def choose_placement_func(arch : Arch, op : Operator):
 
     return best_func, best_score
 
+
+opcount_logger = logging.getLogger(f'{__name__}.opcount')
+
 def place_op(arch : Arch, op : Operator, sim, check_flops=True):
     logger.debug(f'place_op: {arch} {op}')
     func, score = choose_placement_func(arch, op)
@@ -260,13 +263,13 @@ def place_op(arch : Arch, op : Operator, sim, check_flops=True):
 
     if check_flops and op.flops != sim.flops:
         if np.abs(sim.flops / op.flops - 1) < 0.05:
-            logger.warn(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
-            logger.warn(f'Offending op: {op}')
+            opcount_logger.warn(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+            opcount_logger.warn(f'Offending op: {op}')
         else:
-            logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
-            logger.error(f'Offending op: {op}')
-            logger.error(f'Placement function: {func.__name__}')
-            logger.error(f'Arch: {arch}')
+            opcount_logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
+            opcount_logger.error(f'Offending op: {op}')
+            opcount_logger.error(f'Placement function: {func.__name__}')
+            opcount_logger.error(f'Arch: {arch}')
 
 
 @dataclass(frozen=True)
