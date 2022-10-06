@@ -57,8 +57,8 @@ class Arch:
     noc_ports_per_dir : int = None
     line_size : int = None
     l1 : CacheParams = None
-    compute_scale : list[float] = None
-    noc_scale : list[float] = None
+    compute_scale : tuple[float] = None
+    noc_scale : tuple[float] = None
 
     @functools.cached_property
     def scales(self):
@@ -132,8 +132,8 @@ class OracleArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': [1.0],
-        'noc_scale': [1.0],
+        'compute_scale': (1.0,),
+        'noc_scale': (1.0,),
     }
 
 @dataclass(order=True, frozen=True)
@@ -149,8 +149,8 @@ class CoarseOracle(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=256 * 2**10, assoc=256, rports=2),
-        'compute_scale': [1.0],
-        'noc_scale': [1.0],
+        'compute_scale': (1.0,),
+        'noc_scale': (1.0,),
     }
 
 @dataclass(order=True, frozen=True)
@@ -178,8 +178,8 @@ class BgroupArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': [1.0],
-        'noc_scale': [1.0],
+        'compute_scale': (1.0,),
+        'noc_scale': (1.0,),
         'grows': 4,
         'gcols': 8
     }
@@ -200,8 +200,8 @@ class FbcastArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': [1.0],
-        'noc_scale': [1.0],
+        'compute_scale': (1.0,),
+        'noc_scale': (1.0,),
         'max_dests': 8
     }
 
@@ -263,8 +263,8 @@ class HierArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
-        'compute_scale': [1.0],
-        'noc_scale': [1.0],
+        'compute_scale': (1.0,),
+        'noc_scale': (1.0,),
         'grows': 4,
         'gcols': 8,
         'l2': CacheParams(nbanks=None, capacity=512 * 2**10, assoc=8, rports=1),
@@ -316,11 +316,13 @@ def arch_factory(arch_name, kwargs):
         if isinstance(kwargs['compute_scale'], str): kwargs['compute_scale'] = list(map(float, kwargs['compute_scale'].split(',')))
         elif isinstance(kwargs['compute_scale'], list): pass
         else: kwargs['compute_scale'] = [kwargs['compute_scale']]
+        kwargs['compute_scale'] = tuple(kwargs['compute_scale'])
 
     if 'noc_scale' in kwargs and kwargs['noc_scale'] is not None:
         if isinstance(kwargs['noc_scale'], str): kwargs['noc_scale'] = list(map(float, kwargs['noc_scale'].split(',')))
         elif isinstance(kwargs['noc_scale'], list): pass
         else: kwargs['noc_scale'] = [kwargs['noc_scale']]
+        kwargs['noc_scale'] = tuple(kwargs['noc_scale'])
 
     for k, v in kwargs.items():
         if v is not None and k in keys: args[k] = v

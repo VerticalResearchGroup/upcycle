@@ -265,6 +265,8 @@ def place_op(arch : Arch, op : Operator, sim, check_flops=True):
         else:
             logger.error(f'Placement produced different number of FLOPs! (op={op.flops} != wl={sim.flops}, wl/op={sim.flops / op.flops}x)')
             logger.error(f'Offending op: {op}')
+            logger.error(f'Placement function: {func.__name__}')
+            logger.error(f'Arch: {arch}')
 
 
 @dataclass(frozen=True)
@@ -463,7 +465,7 @@ class Sim(SimBase):
         self.dest_maps[step].set(laddr, tid)
 
     def place_work(self, tid, wi : WorkItem):
-        if self.cancel.value: raise KeyboardInterrupt()
+        if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
         assert isinstance(wi, WorkItem)
         global USE_C_TRACE
         self.l1[tid].reset()
@@ -503,33 +505,34 @@ class Sim(SimBase):
         self.cur_step[tid] += 1
 
     def step(self):
-        if self.cancel.value: raise KeyboardInterrupt()
+        if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
 
         traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
+        net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir)
         self.total_traffic += traffic
+
+        max_exec_cyc = int(max(self.exec_cycles[self.global_step]))
+        perfect_exec_cyc = int(max(self.perfect_exec_cycles[self.global_step]))
 
         for i, (cs, ns) in enumerate(self.arch.scales):
             if cs == 0:
-                max_exec_cyc = 0
-                perfect_exec_cyc = 0
+                max_exec_cyc_i = 0
+                perfect_exec_cyc_i = 0
             else:
-                max_exec_cyc = int(max(self.exec_cycles[self.global_step]) / cs)
-                perfect_exec_cyc = int(max(self.perfect_exec_cycles[self.global_step]) / cs)
+                max_exec_cyc_i = max_exec_cyc / cs
+                perfect_exec_cyc_i = perfect_exec_cyc / cs
 
-            if ns == 0:
-                traffic = noc.zero_traffic(self.arch)
-                net_latency = 0
-            else:
-                net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir / ns)
+            if ns == 0: net_latency_i = 0
+            else: net_latency_i = net_latency / ns
 
             if logger.isEnabledFor(logging.DEBUG) and cs == 1.0 and ns == 1.0:
                 cores_used = np.count_nonzero(self.exec_cycles[self.global_step])
-                logger.debug(f'Step {self.global_step + 1}/{self.total_steps}: Cores used: {cores_used}, Exec latency: {self.compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
+                logger.debug(f'Step {self.global_step + 1}/{self.total_steps}: Cores used: {cores_used}, Exec latency: {self.compute_cyc[i]} cyc (best possible: {perfect_exec_cyc_i}), Noc latency: {net_latency_i} cyc')
 
             # Update compute_cyc after this line because compute is one time-step
             # behind prefetch.
-            self.cycles[i] += max(self.compute_cyc[i], net_latency)
-            self.compute_cyc[i] = max_exec_cyc
+            self.cycles[i] += max(self.compute_cyc[i], net_latency_i)
+            self.compute_cyc[i] = max_exec_cyc_i
 
         # tiles_rss = np.array([rss[self.global_step] for rss in self.rss if len(rss) > self.global_step])
         # avg_rss = np.mean(tiles_rss, axis=0)
@@ -547,8 +550,8 @@ class Sim(SimBase):
         self.global_step += 1
 
     def drain(self):
-        logger.debug(f'Compute drain latency: {self.compute_cyc}')
-        self.cycles += self.compute_cyc
+        for i, (cs, ns) in enumerate(self.arch.scales):
+            self.cycles[i] += self.compute_cyc[i]
 
     def barrier(self):
         max_step = max(self.cur_step)
@@ -599,4 +602,4 @@ def common_sim(
     logger.debug(f'Simulating {num_steps} steps...')
     place_op(arch, op, sim)
     sim.drain()
-    return SimResult(sim.nsteps, sim.cycles, sim.total_traffic, sim.kwstats)
+    return SimResult(sim.nsteps, tuple(sim.cycles), sim.total_traffic, sim.kwstats)
