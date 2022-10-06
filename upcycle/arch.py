@@ -45,8 +45,7 @@ class CacheParams:
 
 @dataclass(order=True, frozen=True)
 class Arch:
-    """Base class for all UPCYCLE architectures.
-    """
+    """Base class for all UPCYCLE architectures."""
 
     freq : float = None
     vbits : int = None
@@ -57,8 +56,16 @@ class Arch:
     noc_ports_per_dir : int = None
     line_size : int = None
     l1 : CacheParams = None
-    compute_scale : float = None
-    noc_scale : float = None
+    compute_scale : list[float] = None
+    noc_scale : list[float] = None
+
+    @functools.cached_property
+    def scales(self):
+        return [
+            (cs, ns)
+            for cs in self.compute_scale
+            for ns in self.noc_scale
+        ]
 
     @functools.cached_property
     def vbytes(self): return self.vbits // 8
@@ -106,6 +113,9 @@ class Arch:
     @property
     def defaults(self): raise NotImplementedError()
 
+    @property
+    def keystr(self): return f'upcycle-{self.ntiles}-{self.vbits}-{self.compute_scale}x-{self.noc_scale}n'
+
 @dataclass(order=True, frozen=True)
 class OracleArch(Arch):
     defaults = {
@@ -118,8 +128,8 @@ class OracleArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': 1.0,
-        'noc_scale': 1.0,
+        'compute_scale': [1.0],
+        'noc_scale': [1.0],
     }
 
 @dataclass(order=True, frozen=True)
@@ -134,8 +144,8 @@ class CoarseOracle(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=256 * 2**10, assoc=256, rports=2),
-        'compute_scale': 1.0,
-        'noc_scale': 1.0,
+        'compute_scale': [1.0],
+        'noc_scale': [1.0],
     }
 
 @dataclass(order=True, frozen=True)
@@ -162,8 +172,8 @@ class BgroupArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': 1.0,
-        'noc_scale': 1.0,
+        'compute_scale': [1.0],
+        'noc_scale': [1.0],
         'grows': 4,
         'gcols': 8
     }
@@ -183,8 +193,8 @@ class FbcastArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=1, capacity=65536, assoc=16, rports=2),
-        'compute_scale': 1.0,
-        'noc_scale': 1.0,
+        'compute_scale': [1.0],
+        'noc_scale': [1.0],
         'max_dests': 8
     }
 
@@ -245,8 +255,8 @@ class HierArch(Arch):
         'noc_ports_per_dir': 1,
         'line_size': 32,
         'l1': CacheParams(nbanks=None, capacity=32 * 2**10, assoc=8, rports=2),
-        'compute_scale': 1.0,
-        'noc_scale': 1.0,
+        'compute_scale': [1.0],
+        'noc_scale': [1.0],
         'grows': 4,
         'gcols': 8,
         'l2': CacheParams(nbanks=None, capacity=512 * 2**10, assoc=8, rports=1),
@@ -271,8 +281,8 @@ def arch_cli_params(parser):
     parser.add_argument('--group', type=str, default=None)
     parser.add_argument('--max-dests', type=int, default=None)
     parser.add_argument('--mapping', type=str, default=None)
-    parser.add_argument('-x', '--compute-scale', type=float, default=1.0)
-    parser.add_argument('-n', '--noc-scale', type=float, default=1.0)
+    parser.add_argument('-x', '--compute-scale', type=float, default=None)
+    parser.add_argument('-n', '--noc-scale', type=float, default=None)
 
 def arch_factory(arch_name, kwargs):
     """Factory function for creating UPCYCLE architectures."""
@@ -293,6 +303,16 @@ def arch_factory(arch_name, kwargs):
     if 'l2' in kwargs and kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
     if 'mapping' in kwargs and kwargs['mapping'] is not None: kwargs['mapping'] = TileMapping.from_str(kwargs['mapping'])
     if 'noc_ports' in kwargs and kwargs['noc_ports'] is not None: kwargs['noc_ports_per_dir'] = kwargs['noc_ports']
+
+    if 'compute_scale' in kwargs and kwargs['compute_scale'] is not None:
+        if isinstance(kwargs['compute_scale'], str): kwargs['compute_scale'] = list(map(float, kwargs['compute_scale'].split(',')))
+        elif isinstance(kwargs['compute_scale'], list): pass
+        else: kwargs['compute_scale'] = [kwargs['compute_scale']]
+
+    if 'noc_scale' in kwargs and kwargs['noc_scale'] is not None:
+        if isinstance(kwargs['noc_scale'], str): kwargs['noc_scale'] = list(map(float, kwargs['noc_scale'].split(',')))
+        elif isinstance(kwargs['noc_scale'], list): pass
+        else: kwargs['noc_scale'] = [kwargs['noc_scale']]
 
     for k, v in kwargs.items():
         if v is not None and k in keys: args[k] = v

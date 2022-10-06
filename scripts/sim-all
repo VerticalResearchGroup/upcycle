@@ -86,7 +86,7 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
 
     arch_ops = [
         (arch, op)
-        for arch in archs.values()
+        for arch in archs
         for op in unique_ops
     ]
 
@@ -159,34 +159,19 @@ apps : dict[str, U.apps.Trace] = {
 
 appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
 
-archs = {
-    f'upcycle-{ntiles}-{vbits}-{cs}x-{ns}n':
-        U.arch.arch_factory('hier', dict(
-            vbits=vbits,
-            geom=U.arch.ntiles_to_geom(ntiles),
-            compute_scale=cs,
-            noc_scale=ns))
+archs = [
+    U.arch.arch_factory('hier', dict(
+        vbits=vbits,
+        geom=U.arch.ntiles_to_geom(ntiles),
+        compute_scale=[0.5, 2, 10, 100, 0],
+        noc_scale=[0.5, 2, 10, 100, 0]))
+
     for ntiles in [512, 1024, 2048, 4096]
     for vbits in [256, 512, 1024]
-    for cs in [1]
-    for ns in [1]
-}
-
-archs.update({
-    f'upcycle-{ntiles}-{vbits}-{cs}x-{ns}n':
-        U.arch.arch_factory('hier', dict(
-            vbits=vbits,
-            geom=U.arch.ntiles_to_geom(ntiles),
-            compute_scale=cs,
-            noc_scale=ns))
-    for ntiles in [2048]
-    for vbits in [512]
-    for cs in [0.5, 2, 10, 100, 0]
-    for ns in [0.5, 2, 10, 100, 0]
-})
+]
 
 if __name__ == '__main__':
-    signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
 
     parser = argparse.ArgumentParser(description='Simulate an application')
     parser.add_argument('-p', '--parallel', type=int, default=1)
@@ -197,8 +182,9 @@ if __name__ == '__main__':
 
     os.makedirs('./results', exist_ok=True)
 
-    for archname, arch in archs.items():
-        with open(f'./results/{archname}.yaml', 'w') as f:
+    arch : U.Arch
+    for arch in archs:
+        with open(f'./results/{arch.keystr}.yaml', 'w') as f:
             for ((a, op), result) in results:
                 if a is arch: record_result_to_yaml(f, op, result)
 

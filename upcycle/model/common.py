@@ -443,8 +443,8 @@ class Sim(SimBase):
             for _ in range(arch.ntiles)
         ]
         self.total_traffic = noc.zero_traffic(arch)
-        self.cycles = 0
-        self.compute_cyc = 0
+        self.cycles = [0 for _ in self.arch.scales]
+        self.compute_cyc = [0 for _ in self.arch.scales]
         self.kwstats['rss'] = []
         self.kwstats['l1_accesses'] = 0
         self.kwstats['l1_hits'] = 0
@@ -504,38 +504,40 @@ class Sim(SimBase):
 
     def step(self):
         if self.cancel.value: raise KeyboardInterrupt()
-        if self.arch.compute_scale == 0:
-            max_exec_cyc = 0
-            perfect_exec_cyc = 0
-        else:
-            max_exec_cyc = int(max(self.exec_cycles[self.global_step]) / self.arch.compute_scale)
-            perfect_exec_cyc = int(max(self.perfect_exec_cycles[self.global_step]) / self.arch.compute_scale)
 
-        if self.arch.noc_scale == 0:
-            traffic = noc.zero_traffic(self.arch)
-            net_latency = 0
-        else:
-            traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
-            net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir / self.arch.noc_scale)
-
+        traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
         self.total_traffic += traffic
 
-        if logger.isEnabledFor(logging.DEBUG):
-            cores_used = np.count_nonzero(self.exec_cycles[self.global_step])
-            logger.debug(f'Step {self.global_step + 1}/{self.total_steps}: Cores used: {cores_used}, Exec latency: {self.compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
+        for i, (cs, ns) in enumerate(self.arch.scales):
+            if cs == 0:
+                max_exec_cyc = 0
+                perfect_exec_cyc = 0
+            else:
+                max_exec_cyc = int(max(self.exec_cycles[self.global_step]) / cs)
+                perfect_exec_cyc = int(max(self.perfect_exec_cycles[self.global_step]) / cs)
 
-        # Update compute_cyc after this line because compute is one time-step
-        # behind prefetch.
-        self.cycles += max(self.compute_cyc, net_latency)
-        self.compute_cyc = max_exec_cyc
+            if ns == 0:
+                traffic = noc.zero_traffic(self.arch)
+                net_latency = 0
+            else:
+                net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir / ns)
 
-        tiles_rss = np.array([rss[self.global_step] for rss in self.rss if len(rss) > self.global_step])
-        avg_rss = np.mean(tiles_rss, axis=0)
-        max_rss = np.max(tiles_rss, axis=0)
-        self.kwstats['rss'].append((avg_rss, max_rss))
+            if logger.isEnabledFor(logging.DEBUG) and cs == 1.0 and ns == 1.0:
+                cores_used = np.count_nonzero(self.exec_cycles[self.global_step])
+                logger.debug(f'Step {self.global_step + 1}/{self.total_steps}: Cores used: {cores_used}, Exec latency: {self.compute_cyc} cyc (best possible: {perfect_exec_cyc}), Noc latency: {net_latency} cyc')
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f'+ Max RSS = {max_rss}, Avg RSS = {avg_rss}')
+            # Update compute_cyc after this line because compute is one time-step
+            # behind prefetch.
+            self.cycles[i] += max(self.compute_cyc[i], net_latency)
+            self.compute_cyc[i] = max_exec_cyc
+
+        # tiles_rss = np.array([rss[self.global_step] for rss in self.rss if len(rss) > self.global_step])
+        # avg_rss = np.mean(tiles_rss, axis=0)
+        # max_rss = np.max(tiles_rss, axis=0)
+        # self.kwstats['rss'].append((avg_rss, max_rss))
+
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(f'+ Max RSS = {max_rss}, Avg RSS = {avg_rss}')
 
         if self.lock is not None and self.counter is not None:
             with self.lock: self.counter.value += 1
