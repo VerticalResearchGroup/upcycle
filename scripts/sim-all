@@ -109,7 +109,7 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     progress.close()
     unique_results = result.get()
 
-    results = {op: result for op, result in zip(arch_ops, unique_results)}
+    results = list(zip(arch_ops, unique_results))
     tt1 = time.perf_counter_ns()
 
     return tt1 - tt0, results
