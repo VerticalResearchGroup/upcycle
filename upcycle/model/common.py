@@ -419,13 +419,15 @@ class Sim(SimBase):
         noc_sim_func : Callable,
         total_steps : int,
         lock : any = None,
-        counter : any = None
+        counter : any = None,
+        cancel : any = None,
     ):
         super().__init__(arch)
         self.noc_sim_func = noc_sim_func
         self.total_steps = total_steps
         self.lock = lock
         self.counter = counter
+        self.cancel = cancel
         self.dest_maps = {}
         self.exec_cycles = {}
         self.perfect_exec_cycles = {}
@@ -461,6 +463,7 @@ class Sim(SimBase):
         self.dest_maps[step].set(laddr, tid)
 
     def place_work(self, tid, wi : WorkItem):
+        if self.cancel.value: raise KeyboardInterrupt()
         assert isinstance(wi, WorkItem)
         global USE_C_TRACE
         self.l1[tid].reset()
@@ -500,6 +503,7 @@ class Sim(SimBase):
         self.cur_step[tid] += 1
 
     def step(self):
+        if self.cancel.value: raise KeyboardInterrupt()
         if self.arch.compute_scale == 0:
             max_exec_cyc = 0
             perfect_exec_cyc = 0
@@ -580,6 +584,7 @@ def common_sim(
     noc_sim_func : Callable = simulate_noc,
     counter : multiprocessing.Value = None,
     lock : multiprocessing.Lock = None,
+    cancel : multiprocessing.Value = None,
     num_steps : int = None
 ):
     """Primary entry point for most simulator.
@@ -588,7 +593,7 @@ def common_sim(
     reason to write a custom sim function for a particular architecture in the
     future if there are some wacky features we want to model.
     """
-    sim = ex_sim_cls(arch, noc_sim_func, num_steps, lock, counter)
+    sim = ex_sim_cls(arch, noc_sim_func, num_steps, lock, counter, cancel)
     logger.debug(f'Simulating {num_steps} steps...')
     place_op(arch, op, sim)
     sim.drain()

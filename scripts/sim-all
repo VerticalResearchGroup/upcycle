@@ -8,6 +8,7 @@ import numpy as np
 import logging
 import multiprocessing
 import time
+import signal
 import argparse
 import tqdm
 import pandas as pd
@@ -26,21 +27,40 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 if __name__ == '__main__':
     counter = None
     lock = None
+    cancel = None
 
-def init_pool_processes(c, l):
+def init_pool_processes(c, l, x):
     global counter
     global lock
+    global cancel
 
     counter = c
     lock = l
+    cancel = x
+
+def signal_handler(signal, frame):
+    print('Attempting to gracefully exit...')
+    global cancel
+    cancel.value = True
 
 def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     logger.debug(f'Simulating {op}...')
     global counter
     global lock
+    global cancel
     sim_kwargs['counter'] = counter
     sim_kwargs['lock'] = lock
-    result = U.model.simulate(arch, op, **sim_kwargs)
+    sim_kwargs['cancel'] = cancel
+    try:
+        result = U.model.simulate(arch, op, **sim_kwargs)
+    except KeyboardInterrupt:
+        logger.warning(f'KeyboardInterrupt while simulating {op} on {arch}')
+        logger.warning(f'Returning Null result')
+        result = U.model.SimResult(0, 0, None, dict(
+            l1_accesses=0,
+            l2_accesses=0,
+            llc_accesses=0
+        ))
     logger.debug(f'Finished {op}')
     return result
 
@@ -51,11 +71,15 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
     logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
 def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.apps.Trace], verbose=True):
+    global counter
+    global lock
+    global cancel
     counter = multiprocessing.Value('i', 0)
     lock = multiprocessing.Lock()
+    cancel = multiprocessing.Value('b', False)
 
     pool = multiprocessing.Pool(
-        parallel, initializer=init_pool_processes, initargs=(counter, lock))
+        parallel, initializer=init_pool_processes, initargs=(counter, lock, cancel))
     tt0 = time.perf_counter_ns()
 
     unique_ops = sum(map(lambda app: list(app.unique_ops), apps.values()), [])
@@ -67,7 +91,7 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     ]
 
     logger.info(f'Counting steps for {len(arch_ops)} (arch, op)s...')
-    total_steps = sum(pool.starmap(U.model.num_steps, arch_ops))
+    total_steps = 100 #sum(pool.starmap(U.model.num_steps, arch_ops))
     logger.info(f'Counted {total_steps} steps')
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
@@ -162,6 +186,8 @@ archs.update({
 })
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
+
     parser = argparse.ArgumentParser(description='Simulate an application')
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-v', '--verbose', action='store_true')
