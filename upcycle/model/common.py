@@ -315,8 +315,9 @@ class SimBase:
     to be able to count the number of steps needed for a given layer
     (See StepCounter below).
     """
-    def __init__(self, arch : Arch):
+    def __init__(self, arch : Arch, op : Operator):
         self.arch = arch
+        self.op = op
         self.kwstats = {}
 
     def place_work(self, tid, wl : WorkItem): raise NotImplementedError()
@@ -358,34 +359,41 @@ class SimBase:
         logging.debug(f'map2d_place: {trows}x{tcols} vtiles')
         tiles = [[None for _ in range(self.arch.ncols)] for _ in range(self.arch.nrows)]
 
-        vr = 0
-        for r, nr in enumerate(blkdiv(trows, self.arch.nrows)):
-            tiles.append([])
-            vc = 0
-            for c, nc in enumerate(blkdiv(tcols, self.arch.ncols)):
-                if nr == 0 or nc == 0: continue
-                tiles[r][c] = itertools.chain(*[
-                    vtiles[vr + i][vc + j]
-                    for i in range(nr)
-                    for j in range(nc)])
+        try:
+            vr = 0
+            for r, nr in enumerate(blkdiv(trows, self.arch.nrows)):
+                tiles.append([])
+                vc = 0
+                for c, nc in enumerate(blkdiv(tcols, self.arch.ncols)):
+                    if nr == 0 or nc == 0: continue
+                    tiles[r][c] = itertools.chain(*[
+                        vtiles[vr + i][vc + j]
+                        for i in range(nr)
+                        for j in range(nc)])
 
-                vc += nc
-            vr += nr
+                    vc += nc
+                vr += nr
 
-        while True:
-            placed = 0
-            for r in range(self.arch.nrows):
-                for c in range(self.arch.ncols):
-                    if tiles[r][c] is None: continue
-                    tid = r * self.arch.ncols + c
-                    try:
-                        self.place_work(tid, next(tiles[r][c]))
-                        placed += 1
-                    except StopIteration:
-                        tiles[r][c] = None
+            while True:
+                placed = 0
+                for r in range(self.arch.nrows):
+                    for c in range(self.arch.ncols):
+                        if tiles[r][c] is None: continue
+                        tid = r * self.arch.ncols + c
+                        try:
+                            self.place_work(tid, next(tiles[r][c]))
+                            placed += 1
+                        except StopIteration:
+                            tiles[r][c] = None
 
-            if placed == 0: break
-            self.step()
+                if placed == 0: break
+                self.step()
+        except IndexError:
+            logger.error(f'Error occured in map2d_place!')
+            logger.error(f'vtiles: {trows}x{tcols}')
+            logger.error(f'Offending op: {self.op}')
+            logger.error(f'Arch: {self.arch}')
+
 
     def barrier(self): raise NotImplementedError()
 
@@ -395,8 +403,8 @@ class StepCounter(SimBase):
     N.B. This is used to predict runtime ahead of execution. See num_steps()
     below.
     """
-    def __init__(self, arch : Arch, **kwargs):
-        super().__init__(arch)
+    def __init__(self, arch : Arch, op : Operator, **kwargs):
+        super().__init__(arch, op)
         self.cur_step = [0 for _ in range(arch.ntiles)]
         self.flops = 0
 
@@ -419,13 +427,14 @@ class Sim(SimBase):
     def __init__(
         self,
         arch : Arch,
+        op : Operator,
         noc_sim_func : Callable,
         total_steps : int,
         lock : any = None,
         counter : any = None,
         cancel : any = None,
     ):
-        super().__init__(arch)
+        super().__init__(arch, op)
         self.noc_sim_func = noc_sim_func
         self.total_steps = total_steps
         self.lock = lock
@@ -577,7 +586,7 @@ def num_steps(
     N.B. This is mainly used to count total steps ahead of time for progress-
     reporting purposes. It serves no functional purpose.
     """
-    sim = StepCounter(arch)
+    sim = StepCounter(arch, op)
     place_op(arch, op, sim, check_flops=False)
 
     logger.debug(f'Counted {sim.nsteps} steps for op = {op}')
@@ -599,7 +608,7 @@ def common_sim(
     reason to write a custom sim function for a particular architecture in the
     future if there are some wacky features we want to model.
     """
-    sim = ex_sim_cls(arch, noc_sim_func, num_steps, lock, counter, cancel)
+    sim = ex_sim_cls(arch, op, noc_sim_func, num_steps, lock, counter, cancel)
     logger.debug(f'Simulating {num_steps} steps...')
     place_op(arch, op, sim)
     sim.drain()
