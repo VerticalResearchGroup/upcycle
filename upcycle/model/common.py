@@ -358,18 +358,19 @@ class SimBase:
         logging.debug(f'map2d_place: {trows}x{tcols} vtiles')
         tiles = [[None for _ in range(self.arch.ncols)] for _ in range(self.arch.nrows)]
 
-        r = 0
-        for m in blkdiv(trows, self.arch.nrows):
+        vr = 0
+        for r, nr in enumerate(blkdiv(trows, self.arch.nrows)):
             tiles.append([])
-            c = 0
-            for n in blkdiv(tcols, self.arch.ncols):
+            vc = 0
+            for c, nc in enumerate(blkdiv(tcols, self.arch.ncols)):
+                if nr == 0 or nc == 0: continue
                 tiles[r][c] = itertools.chain(*[
-                    vtiles[r + i][c + j]
-                    for i in range(m)
-                    for j in range(n)])
+                    vtiles[vr + i][vc + j]
+                    for i in range(nr)
+                    for j in range(nc)])
 
-                c += 1
-            r += 1
+                vc += nc
+            vr += nr
 
         while True:
             placed = 0
