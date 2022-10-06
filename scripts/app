@@ -43,10 +43,10 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
     return result
 
 def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, count):
-    gops = int(op.flops / result.cycles * arch.freq / 1e12)
-    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
-    cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
-    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
+    gops = int(op.flops / result.cycles[0] * arch.freq / 1e12)
+    eff = np.round(op.flops / result.cycles[0] / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
+    cyc_frac = np.round(result.cycles[0] / total_cyc * 100, 2) * count
+    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles[0]} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
 def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
     counter = multiprocessing.Value('i', 0)
@@ -80,7 +80,7 @@ def simulate_app_par(parallel : int, arch : U.Arch, dtype : U.Dtype, app : U.app
     tt1 = time.perf_counter_ns()
 
     total_cyc = 0
-    for op in app.oplist: total_cyc += cache[op].cycles
+    for op in app.oplist: total_cyc += cache[op].cycles[0]
 
     layers = []
     counts : dict[U.Operator, int] = dict()
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     logging.info(f'Arch: {arch}')
 
     time_ns, layers = simulate_app_par(args.parallel, arch, dtype, trace, args.verbose)
-    cycles = sum(result.cycles for result in layers)
+    cycles = sum(result.cycles[0] for result in layers)
 
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')
     logging.debug(f'+ Total Latency: {cycles} cyc')
