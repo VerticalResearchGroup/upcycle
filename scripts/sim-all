@@ -91,7 +91,7 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     ]
 
     logger.info(f'Counting steps for {len(arch_ops)} (arch, op)s...')
-    total_steps = 100 #sum(pool.starmap(U.model.num_steps, arch_ops))
+    total_steps = sum(pool.starmap(U.model.num_steps, arch_ops))
     logger.info(f'Counted {total_steps} steps')
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
