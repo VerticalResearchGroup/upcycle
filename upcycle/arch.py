@@ -48,6 +48,7 @@ class Arch:
     """Base class for all UPCYCLE architectures."""
 
     freq : float = None
+    tpeng : bool = None
     vbits : int = None
     macs : int = None
     nrows : int = None
@@ -114,12 +115,15 @@ class Arch:
     def defaults(self): raise NotImplementedError()
 
     @property
-    def keystr(self): return f'upcycle-{self.ntiles}-{self.vbits}-{self.compute_scale}x-{self.noc_scale}n'
+    def keystr(self):
+        tpstr = 'tp' if self.tpeng else 'notp'
+        return f'upcycle-{tpstr}-{self.ntiles}-{self.vbits}-{self.compute_scale}x-{self.noc_scale}n'
 
 @dataclass(order=True, frozen=True)
 class OracleArch(Arch):
     defaults = {
         'freq': 2.4e9,
+        'tpeng': True,
         'vbits': 512,
         'macs': 1,
         'nrows': 32,
@@ -136,6 +140,7 @@ class OracleArch(Arch):
 class CoarseOracle(Arch):
     defaults = {
         'freq': 2.4e9,
+        'tpeng': True,
         'vbits': 512,
         'macs': 32,
         'nrows': 8,
@@ -164,6 +169,7 @@ class BgroupArch(Arch):
 
     defaults = {
         'freq': 2.4e9,
+        'tpeng': True,
         'vbits': 512,
         'macs': 1,
         'nrows': 32,
@@ -185,6 +191,7 @@ class FbcastArch(Arch):
 
     defaults = {
         'freq': 2.4e9,
+        'tpeng': True,
         'vbits': 512,
         'macs': 1,
         'nrows': 32,
@@ -247,6 +254,7 @@ class HierArch(Arch):
 
     defaults = {
         'freq': 2.4e9,
+        'tpeng': True,
         'vbits': 512,
         'macs': 1,
         'nrows': 32,
