@@ -4,6 +4,7 @@ from typing import Callable, Generator, Iterator
 import multiprocessing
 import numpy as np
 import itertools
+import time
 import functools
 import logging
 import gc
@@ -275,6 +276,7 @@ def place_op(arch : Arch, op : Operator, sim, check_flops=True):
 @dataclass(frozen=True)
 class SimResult:
     """The output of the simulator."""
+    simsec : float
     nsteps : int
     cycles : int
     traffic : np.ndarray
@@ -620,8 +622,10 @@ def common_sim(
     reason to write a custom sim function for a particular architecture in the
     future if there are some wacky features we want to model.
     """
+    t0 = time.perf_counter()
     sim = ex_sim_cls(arch, op, noc_sim_func, num_steps, lock, counter, cancel)
     logger.debug(f'Simulating {num_steps} steps...')
     place_op(arch, op, sim)
     sim.drain()
-    return SimResult(sim.nsteps, tuple(sim.cycles), sim.total_traffic, sim.kwstats)
+    t1 = time.perf_counter()
+    return SimResult(t1 - t0, sim.nsteps, tuple(sim.cycles), sim.total_traffic, sim.kwstats)

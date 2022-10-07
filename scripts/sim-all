@@ -93,13 +93,24 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     ]
 
     logger.info(f'Counting steps for {len(arch_ops)} (arch, op)s...')
-    total_steps = sum(pool.starmap(U.model.num_steps, arch_ops))
+    arch_op_steps = list(pool.starmap(U.model.num_steps, arch_ops, chunksize=1))
+    total_steps = sum(arch_op_steps)
     logger.info(f'Counted {total_steps} steps')
+
+    i_total_steps = list(enumerate(arch_op_steps))
+    i_total_steps.sort(key=lambda x: x[1], reverse=True)
+
+    logger.info('')
+    logger.info('Top 10 ops by steps:')
+    for i, steps in i_total_steps[:10]:
+        logger.info(f'{arch_ops[i][1]}: {steps} steps')
+        logger.info(f'    arch={arch_ops[i][0]}')
+    logger.info('')
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 
     result = pool.starmap_async(
-        functools.partial(simulate_layer, sim_kwargs={}), arch_ops)
+        functools.partial(simulate_layer, sim_kwargs={}), arch_ops, chunksize=1)
 
     last = 0
     while not result.ready():
@@ -117,13 +128,13 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     return tt1 - tt0, results
 
 def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
-    cyc = result.cycles
     l1_accesses = result.kwstats['l1_accesses']
     l2_accesses = result.kwstats['l2_accesses']
     llc_accesses = result.kwstats['llc_accesses']
 
     f.write(f'{op}:')
-    f.write(f'    cycles: {cyc}')
+    f.write(f'    simsec: {result.simsec}')
+    f.write(f'    cycles: {result.cycles}')
     f.write(f'    l1_accesses: {l1_accesses}')
     f.write(f'    l2_accesses: {l2_accesses}')
     f.write(f'    llc_accesses: {llc_accesses}')
