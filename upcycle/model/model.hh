@@ -445,12 +445,6 @@ void _hier_traffic(const DestList& dl, py::array_t<uint32_t> traffic, std::vecto
 
     }
 
-    for (size_t i = 0; i < GR*GC; i++) {
-        std::cerr << " " << l2[i].get_accesses();
-    }
-    std::cerr << std::endl;
-
-
     for (const auto& kv : l2dl.dests) {
         const auto& addr = kv.first;
         const auto& mask = kv.second;

@@ -91,7 +91,6 @@ def simulate_hier_noc2(arch : HierArch, kwstats : dict, step : int, sim : HierSi
     if dest_map is None: return
     sim.kwstats['llc_accesses'] += len(dest_map)
     for i in range(arch.ngroups):
-        logger.warn(f'Reset L2[{i}]')
         sim.l2[i].reset_stats()
 
     t0 = time.perf_counter()
@@ -107,7 +106,6 @@ def simulate_hier_noc2(arch : HierArch, kwstats : dict, step : int, sim : HierSi
         2 if arch.line_size == 64 else 1)
 
     for i in range(arch.ngroups):
-        logger.debug(f'L2 {i} stats: {sim.l2[i].get_accesses()} / {sim.l2[i].get_hits()}')
         sim.kwstats['l2_accesses'] += sim.l2[i].get_accesses()
         sim.kwstats['l2_hits'] += sim.l2[i].get_hits()
 
