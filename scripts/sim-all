@@ -24,7 +24,7 @@ fmt = U.logutils.CustomFormatter()
 ch.setFormatter(fmt)
 logging.basicConfig(level=logging.INFO, handlers=[ch])
 
-logging.getLogger('upcycle.model.common.opcount_logger').setLevel(logging.CRITICAL)
+logging.getLogger('upcycle.model.common.opcount').setLevel(logging.CRITICAL)
 
 if __name__ == '__main__':
     counter = None
