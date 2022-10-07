@@ -137,7 +137,7 @@ def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
     f.write(f'    cycles: {result.cycles}\n')
     f.write(f'    l1_accesses: {l1_accesses}\n')
     f.write(f'    l2_accesses: {l2_accesses}\n')
-    f.write(f'    llc_accesses: {llc_accesses}')
+    f.write(f'    llc_accesses: {llc_accesses}\n')
     f.write(f'    total_read_bytes: {op.total_read_bytes}\n')
     f.write(f'    total_weight_bytes: {op.total_weight_bytes}\n')
     f.write(f'    total_write_bytes: {op.total_write_bytes}\n')

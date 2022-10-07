@@ -492,7 +492,7 @@ class Sim(SimBase):
         if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
         assert isinstance(wi, WorkItem)
         global USE_C_TRACE
-        self.l1[tid].reset()
+        self.l1[tid].reset_stats()
         step = self.cur_step[tid]
 
         # if logger.isEnabledFor(logging.DEBUG) and tid == 0:

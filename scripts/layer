@@ -163,7 +163,7 @@ if __name__ == '__main__':
     logging.info(f'Arch: {arch}')
 
     time_ns, layers = simulate_app(arch, dtype, trace, args.verbose)
-    cycles = sum(result.cycles for result in layers)
+    cycles = sum(result.cycles[0] for result in layers)
 
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')
     logging.debug(f'+ Total Latency: {cycles} cyc')

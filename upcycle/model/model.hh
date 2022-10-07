@@ -3,15 +3,16 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl_bind.h>
 #include <iostream>
 
 namespace py = pybind11;
 
 class Cache {
 public:
-    const size_t nset;
-    const size_t nway;
-    const size_t laddrbits;
+    size_t nset;
+    size_t nway;
+    size_t laddrbits;
 
 private:
     size_t accesses;
@@ -34,6 +35,8 @@ public:
             }
         }
     }
+
+    Cache(const Cache& other) = default;
 
     inline bool lookup(uint64_t addr) {
         accesses++;
@@ -71,15 +74,18 @@ public:
         mru[setid] = way;
     }
 
-    inline void reset() {
+    void reset_stats() {
         accesses = 0;
         hits = 0;
     }
 
-    inline size_t get_accesses() const { return accesses; }
-    inline size_t get_hits() const { return hits; }
+    size_t get_accesses() const { return accesses; }
+    size_t get_hits() const { return hits; }
 
 };
+
+
+PYBIND11_MAKE_OPAQUE(std::vector<Cache>);
 
 struct Slice {
     size_t start;
@@ -438,6 +444,11 @@ void _hier_traffic(const DestList& dl, py::array_t<uint32_t> traffic, std::vecto
         }
 
     }
+
+    for (size_t i = 0; i < GR*GC; i++) {
+        std::cerr << " " << l2[i].get_accesses();
+    }
+    std::cerr << std::endl;
 
 
     for (const auto& kv : l2dl.dests) {

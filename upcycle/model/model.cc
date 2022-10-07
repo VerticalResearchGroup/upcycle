@@ -8,7 +8,9 @@ PYBIND11_MODULE(c_model, m) {
         .def("insert", &Cache::insert)
         .def("get_accesses", &Cache::get_accesses)
         .def("get_hits", &Cache::get_hits)
-        .def("reset", &Cache::reset);
+        .def("reset_stats", &Cache::reset_stats);
+
+    py::bind_vector<std::vector<Cache>>(m, "CacheVector");
 
     py::class_<TileMask>(m, "TileMask")
         .def(py::init<>())

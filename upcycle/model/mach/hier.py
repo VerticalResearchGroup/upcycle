@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 class HierSim(Sim):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.l2 = [
+        self.l2 = c_model.CacheVector([
             c_model.Cache(
                 self.arch.l2.nset(self.arch.line_size),
                 self.arch.l2.assoc,
                 self.arch.l2.lbits(self.arch.line_size))
             for _ in range(self.arch.ngroups)
-        ]
+        ])
         self.kwstats['l2_accesses'] = 0
         self.kwstats['l2_hits'] = 0
 
@@ -89,6 +89,10 @@ def simulate_hier_noc(arch : HierArch, kwstats : dict, step : int, sim : HierSim
 def simulate_hier_noc2(arch : HierArch, kwstats : dict, step : int, sim : HierSim):
     dest_map = sim.dest_maps.get(step, None)
     if dest_map is None: return
+    sim.kwstats['llc_accesses'] += len(dest_map)
+    for i in range(arch.ngroups):
+        logger.warn(f'Reset L2[{i}]')
+        sim.l2[i].reset_stats()
 
     t0 = time.perf_counter()
     traffic = noc.zero_traffic(arch)
@@ -102,7 +106,10 @@ def simulate_hier_noc2(arch : HierArch, kwstats : dict, step : int, sim : HierSi
         sim.l2,
         2 if arch.line_size == 64 else 1)
 
-    # print(traffic)
+    for i in range(arch.ngroups):
+        logger.debug(f'L2 {i} stats: {sim.l2[i].get_accesses()} / {sim.l2[i].get_hits()}')
+        sim.kwstats['l2_accesses'] += sim.l2[i].get_accesses()
+        sim.kwstats['l2_hits'] += sim.l2[i].get_hits()
 
     t1 = time.perf_counter()
 
