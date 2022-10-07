@@ -98,13 +98,13 @@ struct TileMask {
     uint64_t mask[64] = {0};
 
     void set(uint64_t tid) {
-        assert(tid < 2048 && "tid out of range");
+        assert(tid < 4096 && "tid out of range");
         mask[tid >> 6] |= 1ull << (tid & 63);
     }
 
     std::vector<uint64_t> tiles() const {
         std::vector<uint64_t> ids;
-        for (uint64_t tid = 0; tid < 2048; tid++) {
+        for (uint64_t tid = 0; tid < 4096; tid++) {
             if (mask[tid >> 6] & (1ull << (tid & 63))) {
                 ids.push_back(tid);
             }
@@ -475,16 +475,22 @@ void hier_traffic(
     switch (lbits) {
     case 5:
         switch (packed_tile_spec) {
+            SUPPORT_ARCH(5ULL, 64ULL, 64ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(5ULL, 32ULL, 64ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(5ULL, 32ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(5ULL, 16ULL, 32ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(5ULL, 16ULL, 16ULL, 4ULL, 8ULL);
         default:
             throw std::runtime_error("Unsupported arch config (LB = 5)");
         }
         break;
     case 6:
         switch (packed_tile_spec) {
+            SUPPORT_ARCH(6ULL, 64ULL, 64ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(6ULL, 32ULL, 64ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(6ULL, 32ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(6ULL, 16ULL, 32ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(6ULL, 16ULL, 16ULL, 4ULL, 8ULL);
         default:
             throw std::runtime_error("Unsupported arch config (LB = 6)");
         }
