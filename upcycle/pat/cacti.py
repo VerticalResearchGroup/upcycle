@@ -10,9 +10,9 @@ CACTI_DIR = '/research/apps/mcpat/cacti'
 
 @dataclass(frozen=True)
 class CactiResult:
-    read_nj : float
-    write_nj : float
-    leak_mw : float
+    read_j : float
+    write_j : float
+    leak_w : float
     area_mm2 : float
 
 def cacti(size_bytes, node=7):
@@ -24,11 +24,11 @@ def cacti(size_bytes, node=7):
 
     for line in output.decode('utf-8').splitlines():
         if 'Total dynamic read energy per access (nJ)' in line:
-            read_j = float(line.strip().split()[-1])
+            read_j = float(line.strip().split()[-1]) * 1e-9
         elif 'Total dynamic write energy per access (nJ)' in line:
-            write_j = float(line.strip().split()[-1])
+            write_j = float(line.strip().split()[-1]) * 1e-9
         elif 'Total leakage power of a bank without power gating, including its network outside (mW)' in line:
-            leak_mw = float(line.strip().split()[-1])
+            leak_w = float(line.strip().split()[-1]) * 1e-3
         elif 'Cache height x width (mm)' in line:
             height_mm_str, _, width_mm_str = line.strip().split()[-3:]
             height_mm = float(height_mm_str)
@@ -41,6 +41,6 @@ def cacti(size_bytes, node=7):
     return CactiResult(
         read_j * energy_scale,
         write_j * energy_scale,
-        leak_mw * pow_scale,
+        leak_w * pow_scale,
         height_mm * width_mm * area_scale)
 

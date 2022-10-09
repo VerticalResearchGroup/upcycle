@@ -18,3 +18,6 @@ core_7nm = Component(45, 0.044, 1 / 1e9, 14e-3).scale_isofreq(7)
 netcon_16nm = Component(16, 1.0, 1 / 1e9, 65e-3)
 netcon_7nm = Component(16, 1.0, 1 / 1e9, 65e-3).scale_isofreq(7)
 
+# We are assuming HBM2 takes ~24 W
+hbm_w = 24
+netcon_w = 30/4/1000

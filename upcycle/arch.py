@@ -68,6 +68,8 @@ class Arch:
             for ns in self.noc_scale
         ]
 
+    def lookup_scale(self, cs, ns): return self.scales.index((cs, ns))
+
     @functools.cached_property
     def vbytes(self): return self.vbits // 8
 
