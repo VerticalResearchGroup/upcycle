@@ -9,31 +9,57 @@ from .mknk import *
 from .kmkn import *
 from .kmnk import *
 
+from .mkkn_notp import *
+from .mknk_notp import *
+from .kmkn_notp import *
+from .kmnk_notp import *
+
 logger = logging.getLogger(__name__)
 
 def choose_tile(arch : Arch, op : Matmul):
     tile = {
-        (256, False, False, Dtype.I8):   MatmulTile256MKKNI8,
-        (256, False, True,  Dtype.I8):   MatmulTile256MKNKI8_SmallK,
-        (256, False, False, Dtype.FP16): MatmulTile256MKKNFP16,
-        (256, False, True,  Dtype.FP16): MatmulTile256MKNKFP16_SmallK,
-        (256, True,  False, Dtype.FP16): MatmulTile256KMKNFP16,
-        (256, True,  True,  Dtype.FP16): MatmulTile256KMNKFP16,
+        (True, 256, False, False, Dtype.I8):   MatmulTile256MKKNI8,
+        (True, 256, False, True,  Dtype.I8):   MatmulTile256MKNKI8_SmallK,
+        (True, 256, False, False, Dtype.FP16): MatmulTile256MKKNFP16,
+        (True, 256, False, True,  Dtype.FP16): MatmulTile256MKNKFP16_SmallK,
+        (True, 256, True,  False, Dtype.FP16): MatmulTile256KMKNFP16,
+        (True, 256, True,  True,  Dtype.FP16): MatmulTile256KMNKFP16,
 
-        (512, False, False, Dtype.I8):   MatmulTile512MKKNI8,
-        (512, False, True,  Dtype.I8):   MatmulTile512MKNKI8_SmallK,
-        (512, False, False, Dtype.FP16): MatmulTile512MKKNFP16,
-        (512, False, True,  Dtype.FP16): MatmulTile512MKNKFP16_SmallK,
-        (512, True,  False, Dtype.FP16): MatmulTile512KMKNFP16,
-        (512, True,  True,  Dtype.FP16): MatmulTile512KMNKFP16,
+        (True, 512, False, False, Dtype.I8):   MatmulTile512MKKNI8,
+        (True, 512, False, True,  Dtype.I8):   MatmulTile512MKNKI8_SmallK,
+        (True, 512, False, False, Dtype.FP16): MatmulTile512MKKNFP16,
+        (True, 512, False, True,  Dtype.FP16): MatmulTile512MKNKFP16_SmallK,
+        (True, 512, True,  False, Dtype.FP16): MatmulTile512KMKNFP16,
+        (True, 512, True,  True,  Dtype.FP16): MatmulTile512KMNKFP16,
 
-        (1024, False, False, Dtype.I8):   MatmulTile1024MKKNI8,
-        (1024, False, True,  Dtype.I8):   MatmulTile1024MKNKI8_SmallK,
-        (1024, False, False, Dtype.FP16): MatmulTile1024MKKNFP16,
-        (1024, False, True,  Dtype.FP16): MatmulTile1024MKNKFP16_SmallK,
-        (1024, True,  False, Dtype.FP16): MatmulTile1024KMKNFP16,
-        (1024, True,  True,  Dtype.FP16): MatmulTile1024KMNKFP16,
-    }[(arch.vbits, op.tr_a, op.tr_b, op.dtype)]
+        (True, 1024, False, False, Dtype.I8):   MatmulTile1024MKKNI8,
+        (True, 1024, False, True,  Dtype.I8):   MatmulTile1024MKNKI8_SmallK,
+        (True, 1024, False, False, Dtype.FP16): MatmulTile1024MKKNFP16,
+        (True, 1024, False, True,  Dtype.FP16): MatmulTile1024MKNKFP16_SmallK,
+        (True, 1024, True,  False, Dtype.FP16): MatmulTile1024KMKNFP16,
+        (True, 1024, True,  True,  Dtype.FP16): MatmulTile1024KMNKFP16,
+
+        (False, 256, False, False, Dtype.I8):   MatmulTile256MKKNI8_NT,
+        (False, 256, False, True,  Dtype.I8):   MatmulTile256MKNKI8_NT,
+        (False, 256, False, False, Dtype.FP16): MatmulTile256MKKNFP16_NT,
+        (False, 256, False, True,  Dtype.FP16): MatmulTile256MKNKFP16_NT,
+        (False, 256, True,  False, Dtype.FP16): MatmulTile256KMKNFP16_NT,
+        (False, 256, True,  True,  Dtype.FP16): MatmulTile256KMNKFP16_NT,
+
+        (False, 512, False, False, Dtype.I8):   MatmulTile512MKKNI8_NT,
+        (False, 512, False, True,  Dtype.I8):   MatmulTile512MKNKI8_NT,
+        (False, 512, False, False, Dtype.FP16): MatmulTile512MKKNFP16_NT,
+        (False, 512, False, True,  Dtype.FP16): MatmulTile512MKNKFP16_NT,
+        (False, 512, True,  False, Dtype.FP16): MatmulTile512KMKNFP16_NT,
+        (False, 512, True,  True,  Dtype.FP16): MatmulTile512KMNKFP16_NT,
+
+        (False, 1024, False, False, Dtype.I8):   MatmulTile1024MKKNI8_NT,
+        (False, 1024, False, True,  Dtype.I8):   MatmulTile1024MKNKI8_NT,
+        (False, 1024, False, False, Dtype.FP16): MatmulTile1024MKKNFP16_NT,
+        (False, 1024, False, True,  Dtype.FP16): MatmulTile1024MKNKFP16_NT,
+        (False, 1024, True,  False, Dtype.FP16): MatmulTile1024KMKNFP16_NT,
+        (False, 1024, True,  True,  Dtype.FP16): MatmulTile1024KMNKFP16_NT,
+    }[(arch.tpeng, arch.vbits, op.tr_a, op.tr_b, op.dtype)]
 
     logger.debug(f'Tile for arch={arch} and op={op}: {tile}')
     return tile
