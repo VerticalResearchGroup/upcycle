@@ -44,7 +44,7 @@ a100_perf = {
         infer_offline_perf=None, infer_offline_bs=None,
         train_dtype=Dtype.FP16,
         train_large_perf=2193/8, train_large_bs=56,
-        train_small_perf=None, train_small_bs=None),
+        train_small_perf=2, train_small_bs=1),
 
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/resnet50/Offline/performance/run_1/mlperf_log_summary.txt
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/resnet50/SingleStream/performance/run_1/mlperf_log_summary.txt
@@ -56,7 +56,7 @@ a100_perf = {
         infer_offline_perf=36864.6, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
         train_large_perf=26325/8, train_large_bs=408,
-        train_small_perf=None, train_small_bs=None),
+        train_small_perf=193, train_small_bs=1),
 
     # NOTE: Inference Only
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/ssd-resnet34/Offline/performance/run_1/mlperf_log_summary.txt
@@ -78,7 +78,7 @@ a100_perf = {
         infer_offline_perf=None, infer_offline_bs=None,
         train_dtype=Dtype.FP16,
         train_large_perf=12214/8, train_large_bs=112,
-        train_small_perf=None, train_small_bs=None),
+        train_small_perf=83, train_small_bs=1),
 
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/rnnt/Offline/performance/run_1/mlperf_log_summary.txt
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/rnnt/SingleStream/performance/run_1/mlperf_log_summary.txt
@@ -90,7 +90,7 @@ a100_perf = {
         infer_offline_perf=13594.4, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
         train_large_perf=7709/8, train_large_bs=2048/8,
-        train_small_perf=None, train_small_bs=None),
+        train_small_perf=38, train_small_bs=2),
 
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/3d-unet-99/Offline/performance/run_1/mlperf_log_summary.txt
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/results/A100-PCIe-80GBx1_TRT/3d-unet-99/SingleStream/performance/run_1/mlperf_log_summary.txt
@@ -101,7 +101,7 @@ a100_perf = {
         infer_offline_perf=2.99 * apps.kits19_patches_per_sample, infer_offline_bs=1,
         train_dtype=Dtype.FP16,
         train_large_perf=283/8, train_large_bs=56/8,
-        train_small_perf=None, train_small_bs=None),
+        train_small_perf=31, train_small_bs=1),
 
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/configs/dlrm/Offline/__init__.py
     # https://github.com/mlcommons/training_results_v1.1/blob/main/NVIDIA/results/dgxa100_ngc21.09_merlin_hugectr/dlrm/result_0.txt
@@ -114,3 +114,54 @@ a100_perf = {
         train_small_perf=None, train_small_bs=None),
 }
 
+def get_perf(appname, mode, batch):
+    app = a100_perf[apps.short_appname_map[(appname, mode)]]
+
+    if mode == 'infer':
+        if batch == 'online':
+            result = app.infer_online_perf
+        elif batch == 'offline':
+            result = app.infer_offline_perf
+        else: assert False
+
+    elif mode == 'train':
+        if batch == 'large':
+            result = app.train_large_perf
+        elif batch == 'small':
+            result = app.train_small_perf
+        else: assert False
+
+    assert result is not None, f'No perf for {appname} {mode} {batch}'
+    return result
+
+def get_batch_size(appname, mode, batch):
+    app = a100_perf[apps.short_appname_map[(appname, mode)]]
+
+    if mode == 'infer':
+        if batch == 'online':
+            result = 1
+        elif batch == 'offline':
+            result = app.infer_offline_bs
+        else: assert False
+
+    elif mode == 'train':
+        if batch == 'large':
+            result = app.train_large_bs
+        elif batch == 'small':
+            result = app.train_small_bs
+        else: assert False
+
+    assert result is not None, f'No batch size for {appname} {mode} {batch}'
+    return result
+
+def pj_per_op(appname, mode, batch):
+    nvips = get_perf(appname, mode, batch)
+
+    nv_pow_w = 300
+    nv_area = 826
+    _, trace, _, _ = apps.workload_factory(
+        apps.short_appname_map[(appname, mode)], 1, infer=mode == 'infer')
+
+    # nv_tops_per_mm2 = trace.flops / nv_area / 1e12
+    nv_pj_per_op = nv_pow_w / nvips / trace.flops * 1e12
+    return nv_pj_per_op

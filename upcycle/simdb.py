@@ -57,6 +57,7 @@ class LayerData:
     l2_energy_j : float
     llc_energy_j : float
     power_w : float
+    energy_j : float
 
     @property
     def real_cyc(self):
@@ -122,6 +123,7 @@ class SimDb:
 
         real_cyc = max(layer_cyc[si], mem_cyc / cfg.mem_scale)
         power_w = self.layer_power_w(yd, real_cyc, cfg)
+        energy_j = power_w * real_cyc / cfg.freq
 
         return LayerData(
             op,
@@ -136,8 +138,15 @@ class SimDb:
             yd['l1_accesses'] * self.l1_cacti.read_j,
             yd['l2_accesses'] * self.l2_cacti.read_j,
             yd['llc_accesses'] * self.llc_cacti.read_j,
-            power_w)
+            power_w,
+            energy_j)
 
     def trace(self, app : apps.Trace, cfg : ArchExtConfig) -> list[LayerData]:
         return [self[op, cfg] for op in app.oplist]
 
+    def perf(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
+        cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
+        return app.bs * cfg.freq / cyc
+
+    def pj_per_op(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
+        return sum(ld.energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12

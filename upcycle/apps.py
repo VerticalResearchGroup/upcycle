@@ -7,6 +7,7 @@ from . import ops
 @dataclass
 class Trace:
     """A trace of DL Operators."""
+    bs : int
     oplist : list[ops.Operator]
 
     @property
@@ -65,18 +66,21 @@ class Trace:
     def unique_ops(self):
         return set(self.oplist)
 
+    def count(self, op):
+        return self.oplist.count(op)
+
 def testmatmul(dtype, n=1):
-    return Trace([ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
+    return Trace(n, [ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])
 
 def testconv(dtype, n=1):
-    return Trace([ ops.Conv2D(dtype, True, n, 224, 224, 3, 112, 112, 64, 7, 7, 2, 3, False) ])
+    return Trace(n, [ ops.Conv2D(dtype, True, n, 224, 224, 3, 112, 112, 64, 7, 7, 2, 3, False) ])
 
 # MLPerf Apps based on v2.0 Inference and v1.1 Training datacenter benchmarks:
 # https://mlcommons.org/en/inference-datacenter-20/
 
 
 def bertlarge(dtype, n=1, s=512):
-    return Trace([
+    return Trace(n, [
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
@@ -92,7 +96,7 @@ def bertlarge384(dtype, n=1, s=384): return bertlarge(dtype, n, s)
 def bertlarge_squadavg(dtype, n=1, s=178): return bertlarge(dtype, n, s)
 
 def bertbase(dtype, n=1, s=512):
-    return Trace([
+    return Trace(n, [
         ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
         ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
         ops.Linear(dtype, True, 1, n * s, 768, 768, False, False),
@@ -106,7 +110,7 @@ def bertbase(dtype, n=1, s=512):
 def bertbase384(dtype, n=1, s=384): return bertbase(dtype, n, s)
 
 def resnet50(dtype, n=1):
-    return Trace([
+    return Trace(n, [
         ops.Conv(dtype, True, n, (224, 224), 3, (112, 112), 64, (7, 7), 2, 3, False),
         ops.Conv(dtype, True, n, (56, 56), 64, (56, 56), 64, (1, 1), 1, 0, False),
         ops.Conv(dtype, True, n, (56, 56), 64, (56, 56), 64, (3, 3), 1, 1, False),
@@ -163,7 +167,7 @@ def resnet50(dtype, n=1):
     ])
 
 def ssdrn34_1200(dtype, n=1):
-    return Trace([
+    return Trace(n, [
         ops.Conv(dtype, True, n, (1200, 1200), 3, (600, 600), 64, (7, 7), 2, 3, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
@@ -218,7 +222,7 @@ def ssdrn34_1200(dtype, n=1):
     ])
 
 def ssdrn34_300(dtype, n=1):
-    return Trace([
+    return Trace(n, [
         ops.Conv(dtype, True, n, (300, 300), 3, (150, 150), 64, (7, 7), 2, 3, False),
         ops.Conv(dtype, True, n, (75, 75), 64, (75, 75), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (75, 75), 64, (75, 75), 64, (3, 3), 1, 1, False),
@@ -273,7 +277,7 @@ def ssdrn34_300(dtype, n=1):
     ])
 
 def ssd_weirdconv(dtype, n=1):
-    return Trace([
+    return Trace(n, [
         ops.Conv(dtype, True, n, (5, 5), 128, (3, 3), 256, (3, 3), 1, 0, False)
     ])
 
@@ -292,7 +296,7 @@ def unet3d(dtype, n=1):
     # unique op once, reducing overall sim time.
     #
 
-    return Trace([
+    return Trace(n, [
         # N.B. Original spatial dimensions are 128x128x128
         ops.Conv(dtype, True, n, (32, 32, 32), 1, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
@@ -331,7 +335,7 @@ def unet3d(dtype, n=1):
 kits19_patches_per_sample = 1544696 / 24612
 
 def rnnt_infer(dtype, n, il=239, ol=120):
-    return Trace(([
+    return Trace(n, ([
         # Encoder
         ops.LstmCell(dtype, False, n, 240, 1024, False, False),
         ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
@@ -348,7 +352,7 @@ def rnnt_infer(dtype, n, il=239, ol=120):
     ] * ol))
 
 def rnnt_train(dtype, n, il=200, ol=200):
-    return Trace(([
+    return Trace(n, ([
         # Encoder
         ops.LstmCell(dtype, True, n, 240, 1024, False, False),
         ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
@@ -365,7 +369,7 @@ def rnnt_train(dtype, n, il=200, ol=200):
     ] * ol))
 
 def dlrm(dtype, n, tok_per_samp_frac=0.2):
-    return Trace([
+    return Trace(n, [
         # Dense Feature Layers
         ops.Linear(dtype, True, 1, n, 512, 13, False, False),
         ops.Linear(dtype, True, 1, n, 256, 512, False, False),
@@ -497,6 +501,19 @@ mlperf_v1_apps = {
         BatchSizes(1, 2048, 1, 2048)),
 }
 
+short_appname_map = {
+    ('resnet50', 'infer'): 'resnet50',
+    ('resnet50', 'train'): 'resnet50',
+    ('ssdrn34', 'infer'): 'ssdrn34-1200',
+    ('ssdrn34', 'train'): 'ssdrn34-300',
+    ('bert', 'infer'): 'bert-large-squad',
+    ('bert', 'train'): 'bert-large-pretrain',
+    ('unet', 'infer'): 'unet',
+    ('unet', 'train'): 'unet',
+    ('rnnt', 'infer'): 'rnnt',
+    ('rnnt', 'train'): 'rnnt'
+}
+
 def workload_cli_params(parser):
     parser.add_argument('-d', '--dtype', type=str, default='')
     parser.add_argument('-t', '--train', action='store_true')
@@ -522,7 +539,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         trace = app.infer_factory(dtype, n=batch)
 
         trace.infer()
-        if layer is not None: trace = Trace([trace.oplist[layer]])
+        if layer is not None: trace = Trace(trace.batch, [trace.oplist[layer]])
 
     else:
         if scenario_or_batch in {'small', 'large'}:
@@ -536,7 +553,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         trace = app.train_factory(dtype, n=batch)
 
         trace.train(bwd_only)
-        if layer is not None: trace = Trace([trace.oplist[layer]])
+        if layer is not None: trace = Trace(trace.batch, [trace.oplist[layer]])
 
     return app, trace, batch, dtype
 
