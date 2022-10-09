@@ -291,6 +291,7 @@ def arch_cli_params(parser):
     parser.add_argument('--group', type=str, default=None)
     parser.add_argument('--max-dests', type=int, default=None)
     parser.add_argument('--mapping', type=str, default=None)
+    parser.add_argument('--notp', action='store_true')
     parser.add_argument('-x', '--compute-scale', type=float, default=None)
     parser.add_argument('-n', '--noc-scale', type=float, default=None)
 
@@ -308,6 +309,7 @@ def arch_factory(arch_name, kwargs):
     args = arch_cls.defaults.copy()
     keys = set(args.keys())
 
+    if 'notp' in kwargs and kwargs['notp']: args['tpeng'] = False
     if 'geom' in kwargs and kwargs['geom'] is not None: args['nrows'], args['ncols'] = map(int, kwargs['geom'].split(','))
     if 'l1' in kwargs and kwargs['l1'] is not None: kwargs['l1'] = CacheParams.from_str(kwargs['l1'])
     if 'l2' in kwargs and kwargs['l2'] is not None: kwargs['l2'] = CacheParams.from_str(kwargs['l2'])
