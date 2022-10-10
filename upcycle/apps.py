@@ -539,7 +539,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         trace = app.infer_factory(dtype, n=batch)
 
         trace.infer()
-        if layer is not None: trace = Trace(trace.batch, [trace.oplist[layer]])
+        if layer is not None: trace = Trace(trace.bs, [trace.oplist[layer]])
 
     else:
         if scenario_or_batch in {'small', 'large'}:
@@ -553,7 +553,7 @@ def workload_factory(app, scenario_or_batch, infer=True, layer=None, bwd_only=Fa
         trace = app.train_factory(dtype, n=batch)
 
         trace.train(bwd_only)
-        if layer is not None: trace = Trace(trace.batch, [trace.oplist[layer]])
+        if layer is not None: trace = Trace(trace.bs, [trace.oplist[layer]])
 
     return app, trace, batch, dtype
 
