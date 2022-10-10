@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+
+import upcycle as U
+import os
+import sys
+import functools
+import numpy as np
+import logging
+import multiprocessing
+import time
+import signal
+import argparse
+import tqdm
+import pandas as pd
+
+blue = '\x1b[38;5;39m'
+green = '\033[92m'
+reset = '\x1b[0m'
+
+logging._srcfile = None
+logger = logging.getLogger()
+ch = logging.StreamHandler(sys.stdout)
+fmt = U.logutils.CustomFormatter()
+ch.setFormatter(fmt)
+logging.basicConfig(level=logging.INFO, handlers=[ch])
+
+logging.getLogger('upcycle.model.common.opcount').setLevel(logging.CRITICAL)
+
+if __name__ == '__main__':
+    counter = None
+    lock = None
+    cancel = None
+
+def init_pool_processes(c, l, x):
+    global counter
+    global lock
+    global cancel
+
+    counter = c
+    lock = l
+    cancel = x
+
+def signal_handler(signal, frame):
+    print('Attempting to gracefully exit...')
+    global cancel
+    cancel.value = True
+
+def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
+    logger.debug(f'Simulating {op}...')
+    global counter
+    global lock
+    global cancel
+    sim_kwargs['counter'] = counter
+    sim_kwargs['lock'] = lock
+    sim_kwargs['cancel'] = cancel
+    try:
+        result = U.model.simulate(arch, op, **sim_kwargs)
+    except KeyboardInterrupt:
+        logger.warning(f'KeyboardInterrupt while simulating {op} on {arch}')
+        logger.warning(f'Returning Null result')
+        result = U.model.SimResult(0, 0, None, dict(
+            l1_accesses=0,
+            l2_accesses=0,
+            llc_accesses=0
+        ))
+    logger.debug(f'Finished {op}')
+    return result
+
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, total_cyc, count):
+    gops = int(op.flops / result.cycles * arch.freq / 1e12)
+    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
+    cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
+    logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
+
+def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.apps.Trace], verbose=True):
+    global counter
+    global lock
+    global cancel
+    counter = multiprocessing.Value('i', 0)
+    lock = multiprocessing.Lock()
+    cancel = multiprocessing.Value('b', False)
+
+    pool = multiprocessing.Pool(
+        parallel, initializer=init_pool_processes, initargs=(counter, lock, cancel))
+    tt0 = time.perf_counter_ns()
+
+    unique_ops = sum(map(lambda app: list(app.unique_ops), apps.values()), [])
+
+    arch_ops = [
+        (arch, op)
+        for arch in archs
+        for op in unique_ops
+    ]
+
+    logger.info(f'Counting steps for {len(arch_ops)} (arch, op)s...')
+    arch_op_steps = list(pool.starmap(U.model.num_steps, arch_ops, chunksize=1))
+    total_steps = sum(arch_op_steps)
+    logger.info(f'Counted {total_steps} steps')
+
+    i_total_steps = list(enumerate(arch_op_steps))
+    i_total_steps.sort(key=lambda x: x[1], reverse=True)
+
+    logger.info('')
+    logger.info('Top 10 ops by steps:')
+    for i, steps in i_total_steps[:10]:
+        logger.info(f'{arch_ops[i][1]}: {steps} steps')
+        logger.info(f'    arch={arch_ops[i][0]}')
+    logger.info('')
+
+    progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
+
+    result = pool.starmap_async(
+        functools.partial(simulate_layer, sim_kwargs={}), arch_ops, chunksize=1)
+
+    last = 0
+    while not result.ready():
+        result.wait(0.5)
+        cur = counter.value
+        progress.update(cur - last)
+        last = cur
+
+    progress.close()
+    unique_results = result.get()
+
+    results = list(zip(arch_ops, unique_results))
+    tt1 = time.perf_counter_ns()
+
+    return tt1 - tt0, results
+
+def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
+    l1_accesses = result.kwstats['l1_accesses']
+    l2_accesses = result.kwstats['l2_accesses']
+    llc_accesses = result.kwstats['llc_accesses']
+
+    f.write(f'{op}:\n')
+    f.write(f'    simsec: {result.simsec}\n')
+    f.write(f'    cycles: {result.cycles}\n')
+    f.write(f'    l1_accesses: {l1_accesses}\n')
+    f.write(f'    l2_accesses: {l2_accesses}\n')
+    f.write(f'    llc_accesses: {llc_accesses}\n')
+    f.write(f'    total_read_bytes: {op.total_read_bytes}\n')
+    f.write(f'    total_weight_bytes: {op.total_weight_bytes}\n')
+    f.write(f'    total_write_bytes: {op.total_write_bytes}\n')
+    f.write('\n')
+
+
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+
+    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+
+    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
+
+    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+
+    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+}
+
+archs = [
+    U.arch.arch_factory('hier', dict(
+        vbits=vbits,
+        tpeng=False,
+        geom=U.arch.ntiles_to_geom(ntiles),
+        compute_scale=[1],
+        noc_scale=[1]))
+
+    for ntiles in [2048]
+    for vbits in [512]
+]
+
+if __name__ == '__main__':
+    # signal.signal(signal.SIGINT, signal_handler)
+
+    parser = argparse.ArgumentParser(description='Simulate an application')
+    parser.add_argument('-p', '--parallel', type=int, default=1)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+
+    time_ns, results = simulate_apps_par(args.parallel, archs, apps, args.verbose)
+
+    os.makedirs('./results', exist_ok=True)
+
+    arch : U.Arch
+    for arch in archs:
+        with open(f'./results/{arch.keystr}.yaml', 'w') as f:
+            for ((a, op), result) in results:
+                if a is arch: record_result_to_yaml(f, op, result)
+
+
