@@ -29,9 +29,9 @@ class ConvTile(M.WorkItem):
     ttc = None
 
     def __post_init__(self):
-        assert self.arch.vbits == self.vbits
-        assert self.op.dtype == self.dtype
-        assert self.op.tr_w == self.tr_w
+        assert self.vbits is None or self.arch.vbits == self.vbits
+        assert self.dtype is None or self.op.dtype == self.dtype
+        assert self.tr_w is None or self.op.tr_w == self.tr_w
 
     @property
     def i(self): return self.inputs[0]

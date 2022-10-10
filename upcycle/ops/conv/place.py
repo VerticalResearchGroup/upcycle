@@ -10,24 +10,40 @@ from .fwd import *
 from .di import *
 from .dw import *
 
+from .fwd_notp import *
+from .di_notp import *
+from .dw_notp import *
+
 #
 # Conv Fwd
 #
 
 def choose_fwd_tile(arch : Arch, op : Conv):
     return {
-        (256, Dtype.I8,   False): ConvTile256I8KC,
-        (256, Dtype.FP16, False): ConvTile256FP16KC,
-        (256, Dtype.FP16, True):  ConvTile256FP16CK,
+        (True, 256, Dtype.I8,   False): ConvTile256I8KC,
+        (True, 256, Dtype.FP16, False): ConvTile256FP16KC,
+        (True, 256, Dtype.FP16, True):  ConvTile256FP16CK,
 
-        (512, Dtype.I8,   False): ConvTile512I8KC,
-        (512, Dtype.FP16, False): ConvTile512FP16KC,
-        (512, Dtype.FP16, True):  ConvTile512FP16CK,
+        (True, 512, Dtype.I8,   False): ConvTile512I8KC,
+        (True, 512, Dtype.FP16, False): ConvTile512FP16KC,
+        (True, 512, Dtype.FP16, True):  ConvTile512FP16CK,
 
-        (1024, Dtype.I8,   False): ConvTile1024I8KC,
-        (1024, Dtype.FP16, False): ConvTile1024FP16KC,
-        (1024, Dtype.FP16, True):  ConvTile1024FP16CK,
-    }[(arch.vbits, op.dtype, op.tr_w)]
+        (True, 1024, Dtype.I8,   False): ConvTile1024I8KC,
+        (True, 1024, Dtype.FP16, False): ConvTile1024FP16KC,
+        (True, 1024, Dtype.FP16, True):  ConvTile1024FP16CK,
+
+        (False, 256, Dtype.I8,   False): ConvTile256I8KC_NT,
+        (False, 256, Dtype.FP16, False): ConvTile256FP16KC_NT,
+        (False, 256, Dtype.FP16, True):  ConvTile256FP16CK_NT,
+
+        (False, 512, Dtype.I8,   False): ConvTile512I8KC_NT,
+        (False, 512, Dtype.FP16, False): ConvTile512FP16KC_NT,
+        (False, 512, Dtype.FP16, True):  ConvTile512FP16CK_NT,
+
+        (False, 1024, Dtype.I8,   False): ConvTile1024I8KC_NT,
+        (False, 1024, Dtype.FP16, False): ConvTile1024FP16KC_NT,
+        (False, 1024, Dtype.FP16, True):  ConvTile1024FP16CK_NT,
+    }[(arch.tpeng, arch.vbits, op.dtype, op.tr_w)]
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
@@ -99,10 +115,14 @@ def place_conv_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
 
 def choose_di_tile(arch : Arch, op : ConvDi):
     return {
-        (256, Dtype.FP16, False): ConvDiTile256FP16KC,
-        (512, Dtype.FP16, False): ConvDiTile512FP16KC,
-        (1024, Dtype.FP16, False): ConvDiTile1024FP16KC,
-    }[(arch.vbits, op.dtype, op.tr_w)]
+        (True, 256, Dtype.FP16, False): ConvDiTile256FP16KC,
+        (True, 512, Dtype.FP16, False): ConvDiTile512FP16KC,
+        (True, 1024, Dtype.FP16, False): ConvDiTile1024FP16KC,
+
+        (False, 256, Dtype.FP16, False): ConvDiTile256FP16KC_NT,
+        (False, 512, Dtype.FP16, False): ConvDiTile512FP16KC_NT,
+        (False, 1024, Dtype.FP16, False): ConvDiTile1024FP16KC_NT,
+    }[(arch.tpeng, arch.vbits, op.dtype, op.tr_w)]
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
@@ -210,10 +230,14 @@ def place_convdi_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
 
 def choose_dw_tile(arch : Arch, op : ConvDw):
     return {
-        (256, Dtype.FP16, False): ConvDwTile256FP16KC,
-        (512, Dtype.FP16, False): ConvDwTile512FP16KC,
-        (1024, Dtype.FP16, False): ConvDwTile1024FP16KC,
-    }[(arch.vbits, op.dtype, op.tr_w)]
+        (True, 256, Dtype.FP16, False): ConvDwTile256FP16KC,
+        (True, 512, Dtype.FP16, False): ConvDwTile512FP16KC,
+        (True, 1024, Dtype.FP16, False): ConvDwTile1024FP16KC,
+
+        (False, 256, Dtype.FP16, False): ConvDwTile256FP16KC_NT,
+        (False, 512, Dtype.FP16, False): ConvDwTile512FP16KC_NT,
+        (False, 1024, Dtype.FP16, False): ConvDwTile1024FP16KC_NT,
+    }[(arch.tpeng, arch.vbits, op.dtype, op.tr_w)]
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],

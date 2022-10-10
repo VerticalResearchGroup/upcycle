@@ -106,10 +106,10 @@ class MatmulTile(M.WorkItem):
     tk = None
 
     def __post_init__(self):
-        assert self.arch.vbits == self.vbits
-        assert self.op.dtype == self.dtype
-        assert self.op.tr_a == self.tr_a
-        assert self.op.tr_b == self.tr_b
+        assert self.vbits is None or self.arch.vbits == self.vbits
+        assert self.dtype is None or self.op is None or self.op.dtype == self.dtype
+        assert self.tr_a is None or self.op is None or self.op.tr_a == self.tr_a
+        assert self.tr_b is None or self.op is None or self.op.tr_b == self.tr_b
 
     @property
     def a(self): return self.inputs[0]
