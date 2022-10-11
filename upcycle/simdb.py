@@ -44,6 +44,7 @@ class ArchExtConfig:
 
 @dataclass(frozen=True)
 class LayerData:
+    arch_ext : ArchExtConfig
     op : ops.Operator
     onchip_cycles : int
     mem_cyc : int
@@ -58,10 +59,18 @@ class LayerData:
     llc_energy_j : float
     power_w : float
     energy_j : float
+    util : float
 
     @property
     def real_cyc(self):
         return max(self.onchip_cycles, self.mem_cyc, 1)
+
+    @property
+    def real_lat(self):
+        return self.real_cyc / self.arch_ext.freq
+
+    @property
+    def mem_bound(self): return self.onchip_cycles < self.mem_cyc
 
 class SimDb:
     def __init__(self, arch : HierArch):
@@ -124,8 +133,10 @@ class SimDb:
         real_cyc = max(layer_cyc[si], mem_cyc, 1)
         power_w = self.layer_power_w(yd, real_cyc, cfg)
         energy_j = power_w * real_cyc / cfg.freq
+        util = op.flops / real_cyc / self.arch.ntiles / self.arch.peak_opc(op.dtype)
 
         return LayerData(
+            cfg,
             op,
             int(layer_cyc[si]),
             mem_cyc,
@@ -139,7 +150,8 @@ class SimDb:
             yd['l2_accesses'] * self.l2_cacti.read_j,
             yd['llc_accesses'] * self.llc_cacti.read_j,
             power_w,
-            energy_j)
+            energy_j,
+            util)
 
     def trace(self, app : apps.Trace, cfg : ArchExtConfig) -> list[LayerData]:
         return [self[op, cfg] for op in app.oplist]

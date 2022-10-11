@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+
+from matplotlib import pyplot as plt
+import upcycle as U
+import numpy as np
+import os
+import itertools
+
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+
+    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+
+    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
+
+    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+
+    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+}
+
+infer_online = {appname: app for appname, app in apps.items() if appname.endswith('-infer-online')}
+infer_offline = {appname: app for appname, app in apps.items() if appname.endswith('-infer-offline')}
+train_small = {appname: app for appname, app in apps.items() if appname.endswith('-train-small')}
+train_large = {appname: app for appname, app in apps.items() if appname.endswith('-train-large')}
+
+appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
+
+arch =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+db = U.simdb.SimDb(arch)
+arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
+
+def analyze_app(db : U.simdb.SimDb, arch_ext : U.simdb.ArchExtConfig, app : U.apps.Trace):
+    total_lat = db.lat(app, arch_ext)
+
+    unique_ops = list(app.unique_ops)
+    counts = [app.count(op) for op in unique_ops]
+    contrib = [counts[i] * db[unique_ops[i], arch_ext].real_lat / total_lat for i in range(len(unique_ops))]
+
+    ops = sorted(list(zip(unique_ops, counts, contrib)), key=lambda x: x[2], reverse=True)
+
+    for i, (op, count, contrib) in enumerate(ops[:10]):
+        ld = db[op, arch_ext]
+        print(f'    {i}: ({count}x) {op} ({np.round(contrib * 100, 2)} % contrib., {np.round(ld.util * 100, 2)} % util), mem bound: {ld.mem_bound}')
+
+
+
+for appname in appnames:
+    for mode in ['infer', 'train']:
+        for large in [False, True]:
+            batch = {
+                ('infer', False): 'online',
+                ('infer', True): 'offline',
+                ('train', False): 'small',
+                ('train', True): 'large',
+            }[(mode, large)]
+
+            print(f'{appname}-{mode}-{batch}')
+            analyze_app(db, arch_ext, apps[f'{appname}-{mode}-{batch}'])
+            print()
+
+
+
+
+
