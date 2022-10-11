@@ -54,13 +54,30 @@ def simulate_layer(arch : U.Arch, op : U.ops.Operator, sim_kwargs):
 
     return result
 
-def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True):
+
+def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
+    l1_accesses = result.kwstats['l1_accesses']
+    l2_accesses = result.kwstats['l2_accesses']
+    llc_accesses = result.kwstats['llc_accesses']
+
+    f.write(f'{op}:\n')
+    f.write(f'    simsec: {result.simsec}\n')
+    f.write(f'    cycles: {result.cycles}\n')
+    f.write(f'    l1_accesses: {l1_accesses}\n')
+    f.write(f'    l2_accesses: {l2_accesses}\n')
+    f.write(f'    llc_accesses: {llc_accesses}\n')
+    f.write(f'    total_read_bytes: {op.total_read_bytes}\n')
+    f.write(f'    total_weight_bytes: {op.total_weight_bytes}\n')
+    f.write(f'    total_write_bytes: {op.total_write_bytes}\n')
+    f.write('\n')
+
+def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True, print_yaml=False):
     gops = int(op.flops / result.cycles * arch.freq / 1e9)
     eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
     logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
     if details:
         if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
-        logger.info(f'+ Latency: {int(result.cycles)} cyc, Hops: {np.sum(result.traffic)}')
+        logger.info(f'+ Latency: {int(result.cycles[0])} cyc, Hops: {np.sum(result.traffic)}')
         logger.info(f'+ Compute: {gops} Gops ({blue}Efficiency: {eff} %{reset})')
         if 'avg_dests' in result.kwstats:
             logger.info(f'+ (Max) Avg Dests Per Line: {np.max(result.kwstats["avg_dests"])}')
@@ -69,8 +86,10 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
         if 'max_lines' in result.kwstats:
             logger.info(f'+ (Max) lines transmitted in one step : {np.max(result.kwstats["max_lines"])}')
 
+    if print_yaml:
+        record_result_to_yaml(sys.stdout, op, result)
 
-def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True):
+def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=True, print_yaml=False):
     layers = []
     cache = {}
     tt0 = time.perf_counter_ns()
@@ -90,7 +109,7 @@ def simulate_app(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, verbose=Tru
         layers.append(result)
 
         t1 = time.perf_counter_ns()
-        if verbose: log_layer(arch, dtype, app, i, op, result, t1 - t0, details=not hit)
+        if verbose: log_layer(arch, dtype, app, i, op, result, t1 - t0, details=not hit, print_yaml=not hit and print_yaml)
 
     tt1 = time.perf_counter_ns()
     return tt1 - tt0, layers
@@ -148,6 +167,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-y', '--print-yaml', action='store_true')
 
     args = parser.parse_args()
     logger.setLevel(logging.DEBUG)
@@ -162,7 +182,7 @@ if __name__ == '__main__':
     logging.info(f'App Ops: {trace.flops / 1e9} G')
     logging.info(f'Arch: {arch}')
 
-    time_ns, layers = simulate_app(arch, dtype, trace, args.verbose)
+    time_ns, layers = simulate_app(arch, dtype, trace, verbose=args.verbose, print_yaml=args.print_yaml)
     cycles = sum(result.cycles[0] for result in layers)
 
     logging.info(f'Summary: (Simulation time: {time_ns / 1e9} s)')
