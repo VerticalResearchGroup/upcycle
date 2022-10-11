@@ -164,6 +164,9 @@ class SimDb:
         cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
         return app.bs * cfg.freq / cyc
 
+    def util(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
+        return self.perf(app, cfg) * app.flops / app.bs / self.arch.total_peak_compute(app.oplist[0].dtype, cfg.freq)
+
     def pj_per_op(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
         return sum(ld.energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12
 

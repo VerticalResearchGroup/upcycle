@@ -85,7 +85,7 @@ a100_perf = {
     # https://github.com/mlcommons/inference_results_v2.0/blob/master/closed/NVIDIA/configs/rnnt/Offline/__init__.py
     # https://github.com/mlcommons/training_results_v1.1/blob/main/NVIDIA/results/dgxa100_ngc21.09_pytorch/rnnt/result_0.txt
     'rnnt': NvidiaAppStats(
-        infer_dtype=Dtype.I8,
+        infer_dtype=Dtype.FP16,
         infer_online_perf=72.06,
         infer_offline_perf=13594.4, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
@@ -153,6 +153,24 @@ def get_batch_size(appname, mode, batch):
 
     assert result is not None, f'No batch size for {appname} {mode} {batch}'
     return result
+
+def get_util(appname, mode, batch):
+    app = a100_perf[apps.short_appname_map[(appname, mode)]]
+    dtype = app.infer_dtype if mode == 'infer' else app.train_dtype
+    nvips = get_perf(appname, mode, batch)
+
+    _, trace, _, _ = apps.workload_factory(
+        apps.short_appname_map[(appname, mode)], 1, infer=mode == 'infer')
+
+    nv_peak_compute = {
+        Dtype.I8: 624e12,
+        Dtype.FP16: 624e12/2,
+    }
+
+    if appname == 'rnnt' and mode == 'infer' and batch == 'offline':
+        print(nvips, dtype, trace.flops, nv_peak_compute[dtype])
+
+    return nvips * trace.flops / nv_peak_compute[dtype]
 
 def pj_per_op(appname, mode, batch):
     nvips = get_perf(appname, mode, batch)

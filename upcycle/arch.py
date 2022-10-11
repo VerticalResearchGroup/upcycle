@@ -101,6 +101,9 @@ class Arch:
     def peak_opc(self, dtype : Dtype):
         return self.vlen(dtype) * self.macs * 2
 
+    def total_peak_compute(self, dtype : Dtype, freq : float):
+        return self.peak_opc(dtype) * self.ntiles * freq
+
     def tile_coords(self, tid):
         assert tid >= 0 and tid < self.ntiles
         return self.idmap[tid]
