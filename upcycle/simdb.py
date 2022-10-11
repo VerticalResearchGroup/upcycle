@@ -61,7 +61,7 @@ class LayerData:
 
     @property
     def real_cyc(self):
-        return max(self.onchip_cycles, self.mem_cyc)
+        return max(self.onchip_cycles, self.mem_cyc, 1)
 
 class SimDb:
     def __init__(self, arch : HierArch):
@@ -115,13 +115,13 @@ class SimDb:
         cfg : ArchExtConfig
         (op, cfg) = x
         yd = self.data[repr(op)]
-        mem_bytes_per_cycle = cfg.membw / cfg.freq
-        offchip_bytes = max(yd['total_read_bytes'] - 128 * 2**20, yd['total_weight_bytes'])
-        mem_cyc = int(0 if cfg.membw == 0 else offchip_bytes / mem_bytes_per_cycle)
+        mem_bytes_per_cycle = cfg.mem_scale * cfg.membw / cfg.freq
+        offchip_bytes = max(yd['total_read_bytes'], yd['total_weight_bytes'])
+        mem_cyc = int(0 if mem_bytes_per_cycle == 0 else offchip_bytes / mem_bytes_per_cycle)
         si = self.arch.lookup_scale(cfg.compute_scale, cfg.noc_scale)
         layer_cyc = make_tuple(yd['cycles'])
 
-        real_cyc = max(layer_cyc[si], mem_cyc / cfg.mem_scale)
+        real_cyc = max(layer_cyc[si], mem_cyc, 1)
         power_w = self.layer_power_w(yd, real_cyc, cfg)
         energy_j = power_w * real_cyc / cfg.freq
 
