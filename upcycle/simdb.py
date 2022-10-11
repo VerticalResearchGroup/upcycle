@@ -38,9 +38,9 @@ power_table = {
 class ArchExtConfig:
     freq : float
     membw : float
-    compute_scale : float
-    noc_scale : float
-    mem_scale : float
+    compute_scale : float = 1.0
+    noc_scale : float = 1.0
+    mem_scale : float = 1.0
 
 @dataclass(frozen=True)
 class LayerData:
@@ -144,9 +144,21 @@ class SimDb:
     def trace(self, app : apps.Trace, cfg : ArchExtConfig) -> list[LayerData]:
         return [self[op, cfg] for op in app.oplist]
 
+    def lat(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
+        cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
+        return cyc / cfg.freq
+
     def perf(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
         cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
         return app.bs * cfg.freq / cyc
 
     def pj_per_op(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
         return sum(ld.energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12
+
+    def tops_per_mm2(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
+        # print(f'{app.bs} {app.flops} {self.lat(app, cfg)} {self.area_mm2()}')
+        return app.flops / self.lat(app, cfg) / self.area_mm2() / 1e12
+
+@functools.lru_cache(maxsize=1024)
+def cached_simdb(arch : HierArch):
+    return SimDb(arch)

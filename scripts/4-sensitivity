@@ -55,7 +55,7 @@ arch =  U.arch.arch_factory('hier', dict(
     noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
 arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
-db = U.simdb.SimDb(arch)
+db = U.simdb.cached_simdb(arch)
 
 refperf = {
     appname: db.perf(app, arch_ext)
