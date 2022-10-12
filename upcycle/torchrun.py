@@ -33,7 +33,7 @@ def _(op : ops.Conv, dev):
     elif op.d == 3:
         layer = torch.nn.Conv3d(op.c, op.k, op.sf, stride=op.stride, padding=op.pad, bias=None).half().to(dev)
 
-    x = torch.randn((op.n, op.c, *op.si), device=dev).half().to(dev)
+    x = torch.randn((op.n, op.c, *op.si)).half().to(dev)
     y = layer(x)
 
     assert y.shape == (op.n, op.k, *op.so)
@@ -51,8 +51,8 @@ def time_torch_op(upcycle_op, dev, niters=100):
     assert HAS_TORCH
     f = make_op_func(upcycle_op, dev)
     t0 = time.perf_counter()
+    torch.cuda.synchronize()
     for _ in range(niters):
-        torch.cuda.synchronize()
         f()
         torch.cuda.synchronize()
     t1 = time.perf_counter()
