@@ -26,50 +26,37 @@ def make_op_func(op, dev):
     raise NotImplementedError(f'{op} is not supported by make_torch_op_input')
 
 @make_op_func.register
-def _(conv : ops.Conv2D, dev):
+def _(op : ops.Conv, dev):
     assert HAS_TORCH
-    x = torch.randn((conv.n, conv.c, conv.h, conv.w), device=dev)
-    f = torch.randn((conv.k, conv.c, conv.r, conv.s), device=dev)
-    y = F.conv2d(x, f, padding=conv.pad, stride=conv.stride)
+    if op.d == 2:
+        layer = torch.nn.Conv2d(op.c, op.k, op.sf, stride=op.stride, padding=op.pad, bias=None).half().to(dev)
+    elif op.d == 3:
+        layer = torch.nn.Conv3d(op.c, op.k, op.sf, stride=op.stride, padding=op.pad, bias=None).half().to(dev)
 
-    assert y.shape == (conv.n, conv.k, conv.p, conv.q)
+    x = torch.randn((op.n, op.c, *op.si), device=dev).half().to(dev)
+    y = layer(x)
 
-    if conv.dtype == Dtype.I8:
-        raise NotImplementedError()
-
-    elif conv.dtype == Dtype.FP16:
-        fp16_x = x.to(torch.float16).to(dev)
-        fp16_f = f.to(torch.float16).to(dev)
-
-        func = lambda: F.conv2d(fp16_x, fp16_f, padding=conv.pad, stride=conv.stride, bias=None)
-
-    return func
+    assert y.shape == (op.n, op.k, *op.so)
+    return lambda: layer(x)
 
 @make_op_func.register
-def _(lin : ops.Linear, dev):
+def _(op : ops.Linear, dev):
     assert HAS_TORCH
-    x = torch.randn((lin.n, lin.c), device=dev)
-    y = torch.randn((lin.n, lin.k), device=dev)
+    assert op.l == 1
+    x = torch.randn((op.m, op.k)).half().to(dev)
+    layer = torch.nn.Linear(op.k, op.n, bias=None).half().to(dev)
+    return lambda: layer(x)
 
-    if lin.dtype == Dtype.I8:
-        raise NotImplementedError()
-
-    elif lin.dtype == Dtype.FP16:
-        fp16_x = x.to(torch.float16).to(dev)
-        fp16_f = f.to(torch.float16).to(dev)
-
-        func = lambda: F.conv2d(fp16_x, fp16_f, padding=conv.pad, stride=conv.stride, bias=None)
-
-    return func
-
-def time_torch_op(upcycle_op, dev, niters=1):
+def time_torch_op(upcycle_op, dev, niters=100):
     assert HAS_TORCH
     f = make_op_func(upcycle_op, dev)
     t0 = time.perf_counter()
-    for _ in range(niters): f()
+    for _ in range(niters):
+        torch.cuda.synchronize()
+        f()
+        torch.cuda.synchronize()
     t1 = time.perf_counter()
     return (t1 - t0) / niters
-
 
 def run_with_torch(trace : apps.Trace, device_type='cpu', device_id=0, niters=100):
     assert HAS_TORCH

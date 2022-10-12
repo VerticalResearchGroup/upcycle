@@ -8,6 +8,6 @@ from . import model
 from . import pat
 from . import nvdb
 from . import logutils
-# from . import torchrun
+from . import torchrun
 from . import simdb
 from . import stats
