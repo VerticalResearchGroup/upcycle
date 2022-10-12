@@ -174,12 +174,14 @@ apps : dict[str, U.apps.Trace] = {
 archs = [
     U.arch.arch_factory('hier', dict(
         vbits=vbits,
+        tpeng=tpeng,
         geom=U.arch.ntiles_to_geom(ntiles),
         compute_scale=[0.5, 1, 2, 10, 100, 0],
         noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
     for ntiles in [512, 1024, 2048, 4096]
     for vbits in [256, 512, 1024]
+    for tpeng in [True, False]
 ]
 
 if __name__ == '__main__':
