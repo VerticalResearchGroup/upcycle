@@ -331,33 +331,38 @@ class SimBase:
 
     def drain(self): raise NotImplementedError()
 
-    def flatmap_place(self, vtiles : list[Iterator[WorkItem]], offset=0, bbox=None, randomize=False):
-        if randomize: shuffle(vtiles)
-        logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
+    def flatmap_place(self, vtiles : Iterator[Iterator[WorkItem]], offset=0, bbox=None, randomize=False):
+        if randomize: raise DeprecationWarning('randomize is deprecated')
+        # logger.debug(f'flatmap_place: {len(vtiles)} vtiles')
         if bbox is not None: raise DeprecationWarning('bbox is deprecated')
         if offset != 0: raise DeprecationWarning('offset is deprecated')
         tiles = [None for _ in range(self.arch.ntiles)]
 
-        logger.debug(f'{sum(blkdiv(len(vtiles), self.arch.ntiles))}')
+        # logger.debug(f'{sum(blkdiv(len(vtiles), self.arch.ntiles))}')
 
-        i = 0
-        for tid, n in enumerate(blkdiv(len(vtiles), self.arch.ntiles)):
-            tiles[tid] = itertools.chain(*[vtiles[i + j] for j in range(n)])
-            i += n
-
+        total_placed = 0
         while True:
             placed = 0
             for tid in range(self.arch.ntiles):
-                if tiles[tid] is None: continue
+                if tiles[tid] is None:
+                    try: tiles[tid] = next(vtiles)
+                    except StopIteration: continue
+
                 try:
                     self.place_work(tid, next(tiles[tid]))
                     placed += 1
                 except StopIteration:
-                    tiles[tid] = None
+                    try:
+                        tiles[tid] = next(vtiles)
+                        self.place_work(tid, next(tiles[tid]))
+                        placed += 1
+                    except StopIteration: pass
 
+            total_placed += placed
             if placed == 0: break
             self.step()
 
+        logger.debug(f'flatmap_place: Placed {total_placed} work items')
 
     def map2d_place(self, vtiles : list[list[Iterator[WorkItem]]]):
         trows, tcols = len(vtiles), len(vtiles[0])

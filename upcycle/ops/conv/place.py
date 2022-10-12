@@ -59,13 +59,13 @@ def place_conv2d_default(arch : Arch, conv : Conv, sim : M.SimBase):
             for bc1 in Slice(0, conv.c).subslice(tile.tc * 2)
         )
 
-    sim.flatmap_place([
+    sim.flatmap_place((
         inner_loop(ns, bp0, bq0, bk0)
         for ns in Slice(0, conv.n).subslice(1)
         for bp0 in Slice(0, conv.so[0]).subslice(tile.tp)
         for bq0 in Slice(0, conv.so[1]).subslice(tile.tq)
         for bk0 in Slice(0, conv.k).subslice(tile.tk * 2)
-    ])
+    ))
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
@@ -82,13 +82,13 @@ def place_conv3d_default(arch : Arch, conv : Conv, sim : M.SimBase):
             for bc1 in Slice(0, conv.c).subslice(tile.tc)
         )
 
-    sim.flatmap_place([
+    sim.flatmap_place((
         inner_loop(bo0, bp0, bq0, bk0)
         for bo0 in Slice(0, conv.so[0]).subslice(tile.to)
         for bp0 in Slice(0, conv.so[1]).subslice(tile.tp)
         for bq0 in Slice(0, conv.so[2]).subslice(tile.tq)
         for bk0 in Slice(0, conv.k).subslice(tile.tk)
-    ])
+    ))
 
 @M.register_placement(
     [OracleArch, BgroupArch, FbcastArch, HierArch],
