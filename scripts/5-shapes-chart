@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import upcycle as U
 import numpy as np
 import os
+import sys
 import itertools
 
 apps : dict[str, U.apps.Trace] = {
@@ -48,11 +49,13 @@ arch =  U.arch.arch_factory('hier', dict(
 
 db = U.simdb.SimDb(arch)
 
+MODE = sys.argv[1] if len(sys.argv) > 1 else 'infer'
+
 def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
-    arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
-    arch_ext_ex = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 2.0, 1.0, 1.0)
-    arch_ext_comm = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 2.0, 1.0)
-    arch_ext_mem = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 2.0)
+    arch_ext =      U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 0.5, 0.5, 0.5)
+    arch_ext_ex =   U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 0.5, 0.5)
+    arch_ext_comm = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 0.5, 1.0, 0.5)
+    arch_ext_mem =  U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 0.5, 0.5, 1.0)
 
     total_lat = db.lat(app, arch_ext)
 
@@ -62,12 +65,9 @@ def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
     speedups = [ex2_speedup, comm2_speedup, mem2_speedup]
     best_speedup = max(ex2_speedup, comm2_speedup, mem2_speedup)
 
-    if best_speedup == ex2_speedup:
-        sens = 'ex'
-    elif best_speedup == comm2_speedup:
-        sens = 'comm'
-    elif best_speedup == mem2_speedup:
-        sens = 'mem'
+    if best_speedup == ex2_speedup: sens = 'ex'
+    elif best_speedup == comm2_speedup: sens = 'comm'
+    elif best_speedup == mem2_speedup: sens = 'mem'
 
     unique_ops = list(app.unique_ops)
     counts = [app.count(op) for op in unique_ops]
@@ -75,14 +75,26 @@ def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
 
     ops = sorted(list(zip(unique_ops, counts, contrib)), key=lambda x: x[2], reverse=True)
 
-    for i, (op, count, contrib) in enumerate(ops[:5]):
+    for i, (op, count, contrib) in enumerate(ops):
         ld = db[op, arch_ext]
         print(f'    {i}: ({count}x) {op} ({np.round(contrib * 100, 2)} % contrib., {np.round(ld.util * 100, 2)} % util)\tMost sensitive to: {sens}\tspeedups = {speedups}')
 
+        yield op, speedups
 
+
+def project_3d_speedup_to_2d(ex, comm, mem):
+    # return \
+    #     (ex - 1) * np.array([0, 1]) + \
+    #     (comm - 1) * np.array([np.sqrt(3) / 2, -1 / 2]) + \
+    #     (mem - 1) * np.array([-np.sqrt(3) / 2, -1 / 2])
+    return np.array([ex - 1, comm - 1])
+
+
+points = {}
 
 for appname in appnames:
-    for mode in ['infer', 'train']:
+    for mode in [MODE]:
+
         for large in [False, True]:
             batch = {
                 ('infer', False): 'online',
@@ -91,11 +103,55 @@ for appname in appnames:
                 ('train', True): 'large',
             }[(mode, large)]
 
-            print(f'{appname}-{mode}-{batch}')
-            analyze_app(db, apps[f'{appname}-{mode}-{batch}'])
-            print()
+            key = f'{appname}-{mode}-{batch}'
+            if key not in points: points[key] = []
+
+            for op, speedups in analyze_app(db, apps[f'{appname}-{mode}-{batch}']):
+                pt = project_3d_speedup_to_2d(*speedups)
+                # print(f'    {speedups} -> {pt}')
+                points[key].append(project_3d_speedup_to_2d(*speedups))
 
 
+fig = plt.figure(figsize=(4, 3))
+ax = fig.subplots(1, 1)
 
+# plt.plot([0, 0], [0, 1], color='black', linestyle='--')
+# plt.plot([0, np.sqrt(3) / 2], [0, -1 / 2], color='black', linestyle='--')
+# plt.plot([0, -np.sqrt(3) / 2], [0, -1 / 2], color='black', linestyle='--')
 
+appshortnames = {
+    'resnet50': 'rn50',
+    'ssdrn34': 'ssd',
+    'unet': 'unet',
+    'bert': 'bert',
+    'rnnt': 'rnnt',
+}
 
+for k, v, in points.items():
+    [appname, mode, batch] = k.split('-')
+    shortname = appshortnames[appname]
+
+    plt.scatter(
+        [p[0] for p in v],
+        [p[1] for p in v],
+        label=f'{shortname}-{batch}', s=8)
+
+# plt.text(0, 1, 'ex')
+# plt.text(np.sqrt(3) / 2, -1 / 2, 'comm')
+# plt.text(-np.sqrt(3) / 2, -1 / 2, 'mem')
+
+# plt.xlim([-1, 1])
+plt.xlim([0, 1])
+plt.xticks([0, 1])
+ax.set_xticklabels(['1x', '2x'])
+# plt.ylim([-1, 1])
+plt.ylim([0, 1])
+plt.yticks([0, 1])
+ax.set_yticklabels(['1x', '2x'])
+plt.legend(loc='upper right', fontsize=8, ncol=2)
+
+plt.xlabel('Speedup from 2x Compute')
+plt.ylabel('Speedup from 2x NoC Speed')
+plt.tight_layout()
+os.makedirs('./figs', exist_ok=True)
+plt.savefig(f'figs/shapes-{MODE}.pdf')

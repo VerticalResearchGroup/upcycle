@@ -70,11 +70,12 @@ def make_plot(ax, apps : dict[str, U.apps.Trace], labels : list[str], mode : str
         for appname in apps.keys()
     ]
 
-    print(f'{mode} {batch}: {speedup}')
-    print(f'{mode} {batch}: {poweff}')
-
     speedup += [U.stats.geo_mean(speedup)]
     poweff += [U.stats.geo_mean(poweff)]
+
+    print(f'Speedup {mode} {batch}: {speedup}')
+    print(f'Power {mode} {batch}: {poweff}')
+    print()
 
     pos = np.arange(len(speedup))
     r1 = ax.bar(pos - BAR_W / 2, speedup, BAR_W, label='Speedup', color='#5DCEAF')

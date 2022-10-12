@@ -5,6 +5,8 @@ import upcycle as U
 import numpy as np
 import os
 
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
 apps : dict[str, U.apps.Trace] = {
     'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
     'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
@@ -39,68 +41,63 @@ train_large = {appname: app for appname, app in apps.items() if appname.endswith
 
 appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
 
+arch_cfgs = [
+    (256, 1024),
+    (256, 2048),
+    (256, 4096),
+    (512, 1024),
+    (512, 2048),
+    (512, 4096),
+]
 
-fig = plt.figure(figsize=(12, 3.5))
-ax = fig.subplots(1, 1)
-    # gridspec_kw={'width_ratios': [len(apps.nv_infer_apps), len(apps.nv_train_apps)]})
-BAR_W = 1
-HEIGHT = 100
-SCALES = [1, 10, 100, 0]
+freqs = list(range(int(1.0e9), int(3.0e9), int(100e6)))
+fig = plt.figure(figsize=(14, 5))
+axs = fig.subplots(2, len(appnames))
+plt.subplots_adjust(wspace=0.5)
 
+for c, appname in enumerate(appnames):
+    for r, mode in enumerate(['infer', 'train']):
+        batch = 'offline' if mode == 'infer' else 'large'
+        app = apps[f'{appname}-{mode}-{batch}']
 
-arch =  U.arch.arch_factory('hier', dict(
-    vbits=512,
-    geom=U.arch.ntiles_to_geom(2048),
-    compute_scale=[0.5, 1, 2, 10, 100, 0],
-    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+        base_pow = None
+        base_area = None
 
-arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
-db = U.simdb.cached_simdb(arch)
+        best_cfg = None
+        best_pow = None
+        best_area = None
 
-refperf = {
-    appname: db.perf(app, arch_ext)
-    for appname, app in apps.items()
-}
+        for i, (vbits, ncores) in enumerate(arch_cfgs):
+            pj_per_op = []
+            tops_per_mm2 = []
 
+            arch =  U.arch.arch_factory('hier', dict(
+                vbits=vbits,
+                geom=U.arch.ntiles_to_geom(ncores),
+                compute_scale=[0.5, 1, 2, 10, 100, 0],
+                noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
-plt.plot([0, 25 * 6], [1, 1], 'k--')
+            db = U.simdb.cached_simdb(arch)
 
+            for freq in freqs:
+                arch_ext = U.simdb.ArchExtConfig(freq, 900 * 2**30)
+                pj_per_op.append(db.pj_per_op(app, arch_ext))
+                tops_per_mm2.append(db.tops_per_mm2(app, arch_ext))
 
-for i, compute_x in enumerate(SCALES):
-    ys = []
-    for mem_x in SCALES:
-        for noc_x in SCALES:
-            arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, compute_x, noc_x, mem_x)
-            ys.append(U.stats.geo_mean([
-                db.perf(app, arch_ext) / refperf[appname]
-                for appname, app in apps.items()
-            ]))
+                if vbits == 512 and ncores == 2048 and freq == 2.4e9:
+                    base_pow = db.pj_per_op(app, arch_ext)
+                    base_area = db.tops_per_mm2(app, arch_ext)
 
-    print(f'{compute_x}\t{[np.round(y, 2) for y in ys]}')
-    xs = np.arange(len(ys)) * (len(SCALES) + 1) + 1 / 2 + i
-    compute_x_str = r'$\infty$' if compute_x == 0 else f'{compute_x}'
-    ax.bar(xs, ys, BAR_W, label=f'Ex={compute_x_str}x')
+                peak_ops = ncores * vbits / 8 * 2 * freq
 
-i = 0
-xticklabels = []
-for mem_x in SCALES:
-    for noc_x in SCALES:
-        mem_x_str = r'$\infty$' if mem_x == 0 else f'{mem_x}'
-        noc_x_str = r'$\infty$' if noc_x == 0 else f'{noc_x}'
-        xticklabels.append(f'NoC={noc_x_str}x\nMem={mem_x_str}x')
-        i += 1
+                # if np.abs(peak_ops - 624e12) / 624e12 > 0.05: continue
 
-# plt.ylim([0, HEIGHT])
-plt.yscale('log')
-plt.ylabel('Speedup over Baseline')
-ax.set_xticks(
-    np.arange(len(SCALES) * len(SCALES)) * (len(SCALES) + 1) + (len(SCALES) + 1) / 2 - 0.5)
-ax.set_xticklabels(xticklabels, rotation=0, fontsize=8)
+                if best_pow is None or db.pj_per_op(app, arch_ext) < best_pow:
+                    best_pow = db.pj_per_op(app, arch_ext)
+                    best_area = db.tops_per_mm2(app, arch_ext)
+                    best_cfg = (vbits, ncores, freq)
 
+        (vbits, ncores, freq) = best_cfg
+        peak_ops = ncores * vbits / 8 * 2 * freq
 
-plt.xlabel('Noc / Mem Scale Factors')
-plt.legend(loc='upper left', fontsize=8)
-plt.xlim([0, (len(SCALES) + 1) * len(SCALES) * len(SCALES) - 1])
-plt.tight_layout()
-os.makedirs('./figs', exist_ok=True)
-plt.savefig('figs/sensitivity.pdf')
+        print(f'{appname}-{mode}-{batch}:\t {vbits}-bit\t {ncores}-core\t {freq/1e9:.2f}GHz\t {peak_ops/1e12:.2f} TOPS\t area_ratio = {best_area / base_area:.2f}\t power_ratio = {best_pow / base_pow:.2f}')
