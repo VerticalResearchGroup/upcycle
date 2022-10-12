@@ -168,7 +168,8 @@ def resnet50(dtype, n=1):
 
 def ssdrn34_1200(dtype, n=1):
     return Trace(n, [
-        ops.Conv(dtype, True, n, (1200, 1200), 3, (600, 600), 64, (7, 7), 2, 3, False),
+        ops.Conv(dtype, True, n, (300, 300), 3, (150, 150), 64, (7, 7), 2, 3, False),
+    ] * 4 + [
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
