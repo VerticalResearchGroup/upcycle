@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import upcycle as U
+from dataclasses import dataclass
 import os
 import sys
 import functools
@@ -11,10 +12,13 @@ import time
 import signal
 import argparse
 import tqdm
+import yaml
 
 blue = '\x1b[38;5;39m'
 green = '\033[92m'
 reset = '\x1b[0m'
+
+RESULT_DIR = './results'
 
 logging._srcfile = None
 logger = logging.getLogger()
@@ -26,6 +30,7 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 logging.getLogger('upcycle.model.common.opcount').setLevel(logging.CRITICAL)
 
 if __name__ == '__main__':
+    os.makedirs(RESULT_DIR, exist_ok=True)
     counter = None
     lock = None
     cancel = None
@@ -71,6 +76,78 @@ def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.
     cyc_frac = np.round(result.cycles / total_cyc * 100, 2) * count
     logger.info(f'Layer {i}/{len(app.oplist)}: {op}, {result.cycles} cyc ({cyc_frac} %) (AmI = {np.round(op.ami, 2)}), {green} {gops} TOP/s {reset} ({blue}Efficiency: {eff} %{reset})')
 
+@dataclass
+class YamlResult:
+    simsec : float
+    simsteps : int
+    timeout : bool
+    timeout_steps : int
+    cycles : int
+    l1_accesses : int
+    l2_accesses : int
+    llc_accesses : int
+    total_read_bytes : int
+    total_weight_bytes : int
+    total_write_bytes : int
+
+    @staticmethod
+    def from_sim_result(op : U.Operator, result : U.model.SimResult):
+        return YamlResult(
+            simsec=result.simsec,
+            simsteps=result.nsteps,
+            timeout=result.kwstats['timeout'],
+            timeout_steps=result.kwstats['timeout-steps'],
+            cycles=result.cycles,
+            l1_accesses=result.kwstats['l1_accesses'],
+            l2_accesses=result.kwstats['l2_accesses'],
+            llc_accesses=result.kwstats['llc_accesses'],
+            total_read_bytes=op.total_read_bytes,
+            total_weight_bytes=op.total_weight_bytes,
+            total_write_bytes=op.total_write_bytes
+        )
+
+    @staticmethod
+    def from_existing_yaml(data):
+        return YamlResult(
+            simsec=data['simsec'],
+            simsteps=data['simsteps'],
+            timeout=data['timeout'],
+            timeout_steps=data['timeout-steps'],
+            cycles=data['cycles'],
+            l1_accesses=data['l1_accesses'],
+            l2_accesses=data['l2_accesses'],
+            llc_accesses=data['llc_accesses'],
+            total_read_bytes=data['total_read_bytes'],
+            total_weight_bytes=data['total_weight_bytes'],
+            total_write_bytes=data['total_write_bytes']
+        )
+
+    def write_to_file(self, op, f):
+        f.write(f'{op}:\n')
+        f.write(f'    simsec: {self.simsec}\n')
+        f.write(f'    simsteps: {self.simsteps}\n')
+        f.write(f'    timeout: {self.timeout}\n')
+        f.write(f'    timeout-steps: {self.timeout_steps}\n')
+        f.write(f'    cycles: {self.cycles}\n')
+        f.write(f'    l1_accesses: {self.l1_accesses}\n')
+        f.write(f'    l2_accesses: {self.l2_accesses}\n')
+        f.write(f'    llc_accesses: {self.llc_accesses}\n')
+        f.write(f'    total_read_bytes: {self.total_read_bytes}\n')
+        f.write(f'    total_weight_bytes: {self.total_weight_bytes}\n')
+        f.write(f'    total_write_bytes: {self.total_write_bytes}\n')
+        f.write('\n')
+
+@functools.lru_cache(maxsize=32)
+def load_existing_db(arch):
+    filename = f'{RESULT_DIR}/{arch.keystr}.yaml'
+    if not os.path.exists(filename): return dict()
+    return yaml.load(open(f'{RESULT_DIR}/{arch.keystr}.yaml', 'r'), Loader=yaml.FullLoader)
+
+def try_get_existing_result(arch, op):
+    db = load_existing_db(arch)
+    if repr(op) in db: return YamlResult.from_existing_yaml(db[repr(op)])
+    return None
+
 def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.apps.Trace], verbose=True):
     global counter
     global lock
@@ -91,8 +168,23 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
         for op in unique_ops
     ]
 
-    logger.info(f'Counting steps for {len(arch_ops)} (arch, op)s...')
-    arch_op_steps = list(pool.starmap(U.model.num_steps, arch_ops, chunksize=1))
+    completed_arch_ops = []
+    to_run_arch_ops = []
+
+    for arch, op in arch_ops:
+        r = try_get_existing_result(arch, op)
+        if r is not None:
+            if r.timeout:
+                logger.warning(f'Existing result for {arch} {op} timed out. Rerunning...')
+                to_run_arch_ops.append((arch, op))
+            else:
+                completed_arch_ops.append((arch, op))
+        else:
+            to_run_arch_ops.append((arch, op))
+
+
+    logger.info(f'Counting steps for {len(to_run_arch_ops)} (arch, op)s...')
+    arch_op_steps = list(pool.starmap(U.model.num_steps, to_run_arch_ops, chunksize=1))
     total_steps = sum(arch_op_steps)
     logger.info(f'Counted {total_steps} steps')
 
@@ -102,14 +194,14 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     logger.info('')
     logger.info('Top 10 ops by steps:')
     for i, steps in i_total_steps[:10]:
-        logger.info(f'{arch_ops[i][1]}: {steps} steps')
-        logger.info(f'    arch={arch_ops[i][0]}')
+        logger.info(f'{to_run_arch_ops[i][1]}: {steps} steps')
+        logger.info(f'    arch={to_run_arch_ops[i][0]}')
     logger.info('')
 
     progress = tqdm.tqdm(total=total_steps, unit='steps', smoothing=0.05)
 
     result = pool.starmap_async(
-        functools.partial(simulate_layer, sim_kwargs={}), arch_ops, chunksize=1)
+        functools.partial(simulate_layer, sim_kwargs={}), to_run_arch_ops, chunksize=1)
 
     last = 0
     while not result.ready():
@@ -121,10 +213,19 @@ def simulate_apps_par(parallel : int, archs : list[U.Arch], apps : dict[str, U.a
     progress.close()
     unique_results = result.get()
 
-    results = list(zip(arch_ops, unique_results))
+    all_results = []
+
+    for (arch, op) in completed_arch_ops:
+        r = try_get_existing_result(arch, op)
+        all_results.append((arch, op, r))
+
+    for (arch, op), r in zip(to_run_arch_ops, unique_results):
+        all_results.append((arch, op, YamlResult.from_sim_result(op, r)))
+
+
     tt1 = time.perf_counter_ns()
 
-    return tt1 - tt0, results
+    return tt1 - tt0, all_results
 
 def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
     l1_accesses = result.kwstats['l1_accesses']
@@ -198,12 +299,10 @@ if __name__ == '__main__':
 
     time_ns, results = simulate_apps_par(args.parallel, archs, apps, args.verbose)
 
-    os.makedirs('./results', exist_ok=True)
-
     arch : U.Arch
     for arch in archs:
-        with open(f'./results/{arch.keystr}.yaml', 'w') as f:
-            for ((a, op), result) in results:
-                if a is arch: record_result_to_yaml(f, op, result)
+        with open(f'{RESULT_DIR}/{arch.keystr}.yaml', 'w') as f:
+            for (a, op, r) in results:
+                if a is arch: r.write_to_file(op, f)
 
 
