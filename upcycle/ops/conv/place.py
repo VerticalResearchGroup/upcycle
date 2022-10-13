@@ -98,7 +98,7 @@ def place_conv_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
     mm = matmul.Matmul(
         conv.dtype,
-        conv.train,
+        conv.fwd,
         1,
         conv.n * conv.outspatial,
         conv.k,
@@ -213,7 +213,7 @@ def place_convdi_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
     mm = matmul.MatmulDa.from_forward(matmul.Matmul(
         conv.dtype,
-        conv.train,
+        conv.fwd,
         1,
         conv.n * conv.outspatial,
         conv.k,
@@ -339,7 +339,7 @@ def place_convdw_1x1x1(arch : Arch, conv : ConvDi, sim : M.SimBase):
     # We observe in this case the convolution degenerates into a large matmul.
     mm = matmul.MatmulDb.from_forward(matmul.Matmul(
         conv.dtype,
-        conv.train,
+        conv.fwd,
         1,
         conv.n * conv.outspatial,
         conv.k,
