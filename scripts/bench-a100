@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import upcycle as U
+import os
+import sys
+import numpy as np
+import logging
+import argparse
+import torch
+
+dev = torch.device(os.environ.get('DEV', None))
+
+blue = '\x1b[38;5;39m'
+green = '\033[92m'
+reset = '\x1b[0m'
+
+logging._srcfile = None
+logger = logging.getLogger()
+ch = logging.StreamHandler(sys.stdout)
+fmt = U.logutils.CustomFormatter()
+ch.setFormatter(fmt)
+logging.basicConfig(level=logging.INFO, handlers=[ch])
+
+logging.getLogger('upcycle.model.common.opcount').setLevel(logging.CRITICAL)
+
+
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+
+    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+
+    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
+
+    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+
+    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+}
+
+os.makedirs('./results', exist_ok=True)
+with open(f'./results/a100-bench.yaml', 'w') as f:
+    for k, app in apps.items():
+        for op in app.oplist:
+            avg_time = U.torchrun.time_torch_op(op, dev, niters=500, warmup=100)
+            print(f'{op}: {avg_time}', file=f)
+
