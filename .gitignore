@@ -10,3 +10,4 @@ dist
 out.csv
 results
 figs
+*.tar.gz
