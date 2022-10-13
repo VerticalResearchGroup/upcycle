@@ -51,34 +51,54 @@ db = U.simdb.SimDb(arch)
 nv = U.nvdb.NvDb()
 
 fig = plt.figure(figsize=(14, 5))
-axs = fig.subplots(4, len(appnames), sharex=True, sharey=True)
+axs = fig.subplots(4, len(appnames), sharex=False, sharey=False)
+plt.subplots_adjust(wspace=0.01)
+
+WIDTH = 1.0
 
 for i, appname in enumerate(appnames):
     for j, variant in enumerate(variants):
         app = apps[f'{appname}-{variant}']
         if 'train' in variant: app = U.apps.post_process_train_app(app)
 
+        unique_ops = []
+        for op in app:
+            if op not in unique_ops: unique_ops.append(op)
+
         ax = axs[j, i]
+        if i == 0: ax.set_ylabel(variant)
+        if j == 3: ax.set_xlabel(appname)
 
-        if i == 0:
-            ax.set_ylabel(variant)
+        our_utils = [db[op, arch_ext].util for op in unique_ops]
+        nv_utils = [nv[op, None].util for op in unique_ops]
 
-        if j == 3:
-            ax.set_xlabel(appname)
+        if f'{appname}-{variant}' == 'rnnt-train-large':
+            print(our_utils)
+            print(nv_utils)
 
-        our_utils = [db[op, arch_ext].util for op in app.oplist]
-        nv_utils = [nv[op, None].util for op in app.oplist]
+        # flops = np.array([float(op.flops) for op in app.oplist])
+        # xs = np.cumsum(flops) - flops[0]
+        # xs = xs / xs[-1]
+        # xs = np.linspace(0, 1, len(app.oplist))
+        xs = np.arange(len(our_utils)) * 3
+        our_bars = ax.bar(xs + 0.5, our_utils, WIDTH, label='UPCYCLE-BASE Utilization')
+        nv_bars = ax.bar(xs + 1.5, nv_utils, WIDTH, label='A100 Utilization')
 
-        xs = np.linspace(0, 1, len(app.oplist))
-        ax.plot(xs, our_utils, label='UPCYCLE-BASE', linewidth=2)
-        ax.plot(xs, nv_utils, label='A100', linewidth=2)
+        ax.set_xlim([0, len(our_utils) * 3])
+        ax.set_xticks([])
 
-
-plt.xlim([0, 1])
-
-# plt.ylim([0, HEIGHT])
-plt.xticks([])
+# plt.xlim([0, 1])
+# plt.ylim([0, 1])
+# plt.xticks([])
 plt.tight_layout()
+
+plt.figlegend(
+    handles=[our_bars, nv_bars],
+    loc='lower center',
+    # bbox_to_anchor=(0.0, 0),
+    ncol=2)
+
+plt.subplots_adjust(bottom=0.12)
 os.makedirs('./figs', exist_ok=True)
 plt.savefig('figs/compare_by_layers.pdf')
 
