@@ -14,6 +14,9 @@ from ..arch import *
 from . import c_model
 from . import noc
 
+TIMEOUT=8 * 2600
+# TIMEOUT=30
+
 logger = logging.getLogger(__name__)
 
 def nloads(arch : Arch, dtype : Dtype, r : Slice, R : int, c : Slice, C : int, transpose=False, contig=True):
@@ -454,6 +457,7 @@ class Sim(SimBase):
         cancel : any = None,
     ):
         super().__init__(arch, op)
+        self.t0 = time.perf_counter()
         self.noc_sim_func = noc_sim_func
         self.total_steps = total_steps
         self.lock = lock
@@ -476,6 +480,8 @@ class Sim(SimBase):
         self.total_traffic = noc.zero_traffic(arch)
         self.cycles = [0 for _ in self.arch.scales]
         self.compute_cyc = [0 for _ in self.arch.scales]
+        self.kwstats['timeout'] = False
+        self.kwstats['timeout-steps'] = 0
         self.kwstats['rss'] = []
         self.kwstats['l1_accesses'] = 0
         self.kwstats['l1_hits'] = 0
@@ -495,6 +501,9 @@ class Sim(SimBase):
 
     def place_work(self, tid, wi : WorkItem):
         if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
+        if self.kwstats['timeout']:
+            self.cur_step[tid] += 1
+            return
         assert isinstance(wi, WorkItem)
         global USE_C_TRACE
         self.l1[tid].reset_stats()
@@ -535,6 +544,18 @@ class Sim(SimBase):
 
     def step(self):
         if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
+        if self.kwstats['timeout']:
+            self.global_step += 1
+            return
+
+        elif time.perf_counter() - self.t0 > TIMEOUT:
+            logger.error(f'Timeout after {TIMEOUT} seconds')
+            logger.error(f'Offending op: {self.op}')
+            logger.error(f'Offending arch: {self.arch}')
+            self.kwstats['timeout'] = True
+            self.kwstats['timeout-steps'] = self.global_step
+            self.global_step += 1
+            return
 
         traffic = self.noc_sim_func(self.arch, self.kwstats, self.global_step, self)
         net_latency = int(np.max(traffic) / self.arch.noc_ports_per_dir)

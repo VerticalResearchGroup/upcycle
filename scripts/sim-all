@@ -130,9 +130,13 @@ def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
     l1_accesses = result.kwstats['l1_accesses']
     l2_accesses = result.kwstats['l2_accesses']
     llc_accesses = result.kwstats['llc_accesses']
+    timeout = result.kwstats['timeout']
+    timeout_steps = result.kwstats['timeout-steps']
 
     f.write(f'{op}:\n')
     f.write(f'    simsec: {result.simsec}\n')
+    f.write(f'    timeout: {timeout}\n')
+    f.write(f'    timeout-steps: {timeout_steps}\n')
     f.write(f'    cycles: {result.cycles}\n')
     f.write(f'    l1_accesses: {l1_accesses}\n')
     f.write(f'    l2_accesses: {l2_accesses}\n')
