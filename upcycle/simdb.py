@@ -146,7 +146,31 @@ class SimDb:
                     result += self[(opp, cfg)]
             return result
 
-        yd = self.data[repr(op)]
+        if repr(op) == 'Conv2D[Int8](n=1, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)':
+            yd = self.data['Conv2D[Int8](n=1, i=(1200, 1200)x3+3 w=(7, 7)x64x3 o=(600, 600)x64 by 2)']
+
+            yd['cycles'] = str(tuple(x * 4 for x in make_tuple(yd['cycles'])))
+            yd['total_read_bytes'] = float(yd['total_read_bytes']) * 4
+            yd['total_weight_bytes'] = float(yd['total_weight_bytes']) * 4
+            yd['total_write_bytes'] = float(yd['total_write_bytes']) * 4
+            yd['l1_accesses'] = float(yd['l1_accesses']) * 4
+            yd['l2_accesses'] = float(yd['l2_accesses']) * 4
+            yd['llc_accesses'] = float(yd['llc_accesses']) * 4
+
+
+        elif repr(op) == 'Conv2D[Int8](n=16, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)':
+            yd = self.data['Conv2D[Int8](n=16, i=(1200, 1200)x3+3 w=(7, 7)x64x3 o=(600, 600)x64 by 2)']
+
+            yd['cycles'] = str(tuple(x * 4 for x in make_tuple(yd['cycles'])))
+            yd['total_read_bytes'] = float(yd['total_read_bytes']) * 4
+            yd['total_weight_bytes'] = float(yd['total_weight_bytes']) * 4
+            yd['total_write_bytes'] = float(yd['total_write_bytes']) * 4
+            yd['l1_accesses'] = float(yd['l1_accesses']) * 4
+            yd['l2_accesses'] = float(yd['l2_accesses']) * 4
+            yd['llc_accesses'] = float(yd['llc_accesses']) * 4
+
+        else: yd = self.data[repr(op)]
+
         mem_bytes_per_cycle = cfg.mem_scale * cfg.membw / cfg.freq
         offchip_bytes = max(yd['total_read_bytes'], yd['total_weight_bytes'])
         mem_cyc = int(0 if mem_bytes_per_cycle == 0 else offchip_bytes / mem_bytes_per_cycle)
