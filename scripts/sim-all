@@ -135,6 +135,7 @@ def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
 
     f.write(f'{op}:\n')
     f.write(f'    simsec: {result.simsec}\n')
+    f.write(f'    simsteps: {result.nsteps}\n')
     f.write(f'    timeout: {timeout}\n')
     f.write(f'    timeout-steps: {timeout_steps}\n')
     f.write(f'    cycles: {result.cycles}\n')
