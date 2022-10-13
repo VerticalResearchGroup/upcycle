@@ -38,7 +38,7 @@ train_small = {appname: app for appname, app in apps.items() if appname.endswith
 train_large = {appname: app for appname, app in apps.items() if appname.endswith('-train-large')}
 
 appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
-variants = ['infer-online', 'infer-offline', 'train-small', 'train-large']
+variants = ['infer-offline', 'train-large']
 
 arch =  U.arch.arch_factory('hier', dict(
     vbits=512,
@@ -51,7 +51,7 @@ db = U.simdb.SimDb(arch)
 nv = U.nvdb.NvDb()
 
 fig = plt.figure(figsize=(14, 5))
-axs = fig.subplots(4, len(appnames), sharex=False, sharey=False)
+axs = fig.subplots(len(variants), len(appnames), sharex=False, sharey=False)
 plt.subplots_adjust(wspace=0.01)
 
 WIDTH = 1.0
@@ -67,7 +67,7 @@ for i, appname in enumerate(appnames):
 
         ax = axs[j, i]
         if i == 0: ax.set_ylabel(variant)
-        if j == 3: ax.set_xlabel(appname)
+        if j == len(variants) - 1: ax.set_xlabel(appname)
 
         our_utils = [db[op, arch_ext].util for op in unique_ops]
         nv_utils = [nv[op, None].util for op in unique_ops]
