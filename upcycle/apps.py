@@ -4,6 +4,17 @@ from typing import Callable
 from .common import *
 from . import ops
 
+def make_bwd_ops(op : Operator):
+    if type(op) in ops.backward_map:
+        backward_ops = ops.backward_map[type(op)]
+        return [
+            bop.from_forward(op)
+            for bop in backward_ops
+        ]
+    else:
+        logging.warn(f'No backward operator for {type(op)}. Ignoring.')
+        return []
+
 @dataclass
 class Trace:
     """A trace of DL Operators."""
@@ -48,14 +59,7 @@ class Trace:
 
         bwd_list = []
         for op in reversed(self.oplist):
-            if op.fwd:
-                if type(op) in ops.backward_map:
-                    backward_ops = ops.backward_map[type(op)]
-                    for bop in backward_ops:
-                        bwd_list.append(bop.from_forward(op))
-
-                else:
-                    logging.warn(f'No backward operator for {type(op)}. Ignoring.')
+            if op.fwd: bwd_list += make_bwd_ops(op)
 
         if bwd_only: self.oplist = bwd_list
         else: self.oplist = self.oplist + bwd_list
@@ -182,8 +186,8 @@ def resnet50(dtype, n=1):
 
 def ssdrn34_1200(dtype, n=1):
     return Trace(n, [
-        ops.Conv(dtype, True, n, (300, 300), 3, (150, 150), 64, (7, 7), 2, 3, False),
-    ] * 4 + [
+        ops.Conv(dtype, True, n, (1200, 1200), 3, (600, 600), 64, (7, 7), 2, 3, False),
+    ] * 1 + [
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),
         ops.Conv(dtype, True, n, (300, 300), 64, (300, 300), 64, (3, 3), 1, 1, False),

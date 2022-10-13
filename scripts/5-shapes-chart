@@ -71,7 +71,7 @@ def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
 
     unique_ops = list(app.unique_ops)
     counts = [app.count(op) for op in unique_ops]
-    contrib = [counts[i] * db[unique_ops[i], arch_ext].real_lat / total_lat for i in range(len(unique_ops))]
+    contrib = [counts[i] * db[unique_ops[i], arch_ext].tot_lat / total_lat for i in range(len(unique_ops))]
 
     ops = sorted(list(zip(unique_ops, counts, contrib)), key=lambda x: x[2], reverse=True)
 

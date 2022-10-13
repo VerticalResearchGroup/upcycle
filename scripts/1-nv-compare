@@ -78,8 +78,8 @@ def make_plot(ax, apps : dict[str, U.apps.Trace], labels : list[str], mode : str
     print()
 
     pos = np.arange(len(speedup))
-    r1 = ax.bar(pos - BAR_W / 2, speedup, BAR_W, label='Speedup', color='#5DCEAF')
-    r2 = ax.bar(pos + BAR_W / 2, poweff, BAR_W, label='Rel. Efficiency', color='#4E67C8')
+    r1 = ax.bar(pos - BAR_W / 2, speedup, BAR_W, label='Speedup', color='#4E67C8')
+    r2 = ax.bar(pos + BAR_W / 2, poweff, BAR_W, label='Rel. Efficiency', color='#5DCEAF')
 
     for i in range(len(speedup)):
         if speedup[i] > HEIGHT:

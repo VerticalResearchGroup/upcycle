@@ -44,33 +44,49 @@ class ArchExtConfig:
 
 @dataclass(frozen=True)
 class LayerData:
+    arch : Arch
     arch_ext : ArchExtConfig
-    op : ops.Operator
-    onchip_cycles : int
-    mem_cyc : int
-    l1_accesses : int
-    l2_accesses : int
-    llc_accesses : int
-    total_read_bytes : int
-    total_weight_bytes : int
-    total_write_bytes : int
-    l1_energy_j : float
-    l2_energy_j : float
-    llc_energy_j : float
-    power_w : float
-    energy_j : float
-    util : float
+    ops : tuple[ops.Operator]
+    onchip_cycles : tuple[int]
+    mem_cycs : tuple[int]
+    powers_w : tuple[float]
+    energies_j : tuple[float]
 
     @property
-    def real_cyc(self):
-        return max(self.onchip_cycles, self.mem_cyc, 1)
+    def tot_cyc(self):
+        return sum(
+            max(self.onchip_cycles[i], self.mem_cycs[i], 1)
+            for i in range(len(self.onchip_cycles)))
 
     @property
-    def real_lat(self):
-        return self.real_cyc / self.arch_ext.freq
+    def tot_lat(self): return self.tot_cyc / self.arch_ext.freq
 
     @property
-    def mem_bound(self): return self.onchip_cycles < self.mem_cyc
+    def max_pow_w(self): return max(self.powers_w)
+
+    @property
+    def tot_flops(self): return sum(op.flops for op in self.ops)
+
+    @property
+    def tot_energy_j(self): return sum(self.energies_j)
+
+
+    @property
+    def util(self):
+        return self.tot_flops / self.tot_lat / \
+            self.arch.total_peak_compute(self.ops[0].dtype, self.arch_ext.freq)
+
+    def __add__(self, other : 'LayerData') -> 'LayerData':
+        return LayerData(
+            self.arch_ext,
+            self.arch,
+            self.ops + other.ops,
+            self.onchip_cycles + other.onchip_cycles,
+            self.mem_cycs + other.mem_cycs,
+            self.powers_w + other.powers_w,
+            self.energies_j + other.energies_j)
+
+
 
 class SimDb:
     def __init__(self, arch : HierArch):
@@ -123,6 +139,16 @@ class SimDb:
         op : ops.Operator
         cfg : ArchExtConfig
         (op, cfg) = x
+
+        if isinstance(op, apps.TrainOp):
+            result = None
+            for bop in apps.make_bwd_ops(op):
+                if result is None:
+                    result = self[(bop, cfg)]
+                else:
+                    result += self[(bop, cfg)]
+            return result
+
         yd = self.data[repr(op)]
         mem_bytes_per_cycle = cfg.mem_scale * cfg.membw / cfg.freq
         offchip_bytes = max(yd['total_read_bytes'], yd['total_weight_bytes'])
@@ -133,42 +159,32 @@ class SimDb:
         real_cyc = max(layer_cyc[si], mem_cyc, 1)
         power_w = self.layer_power_w(yd, real_cyc, cfg)
         energy_j = power_w * real_cyc / cfg.freq
-        util = op.flops / real_cyc / self.arch.ntiles / self.arch.peak_opc(op.dtype)
 
         return LayerData(
+            self.arch,
             cfg,
-            op,
-            int(layer_cyc[si]),
-            mem_cyc,
-            yd['l1_accesses'],
-            yd['l2_accesses'],
-            yd['llc_accesses'],
-            yd['total_read_bytes'],
-            yd['total_weight_bytes'],
-            yd['total_write_bytes'],
-            yd['l1_accesses'] * self.l1_cacti.read_j,
-            yd['l2_accesses'] * self.l2_cacti.read_j,
-            yd['llc_accesses'] * self.llc_cacti.read_j,
-            power_w,
-            energy_j,
-            util)
+            (op, ),
+            (int(layer_cyc[si]), ),
+            (mem_cyc, ),
+            (power_w, ),
+            (energy_j, ))
 
     def trace(self, app : apps.Trace, cfg : ArchExtConfig) -> list[LayerData]:
         return [self[op, cfg] for op in app.oplist]
 
     def lat(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
-        cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
+        cyc = sum([ld.tot_cyc for ld in self.trace(app, cfg)])
         return cyc / cfg.freq
 
     def perf(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
-        cyc = sum([ld.real_cyc for ld in self.trace(app, cfg)])
+        cyc = sum([ld.tot_cyc for ld in self.trace(app, cfg)])
         return app.bs * cfg.freq / cyc
 
     def util(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
         return self.perf(app, cfg) * app.flops / app.bs / self.arch.total_peak_compute(app.oplist[0].dtype, cfg.freq)
 
     def pj_per_op(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
-        return sum(ld.energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12
+        return sum(ld.tot_energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12
 
     def tops_per_mm2(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
         # print(f'{app.bs} {app.flops} {self.lat(app, cfg)} {self.area_mm2()}')
