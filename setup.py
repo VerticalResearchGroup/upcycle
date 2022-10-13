@@ -23,7 +23,7 @@ setup(
     license='LICENSE',
     description='An awesome package that does something',
     long_description=open('README.md').read(),
-    install_requires=[],
+    install_requires=['pyyaml'],
     ext_modules=[
         Pybind11Extension(
             'upcycle.model.c_model',
