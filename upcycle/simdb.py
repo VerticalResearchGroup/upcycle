@@ -146,7 +146,8 @@ class SimDb:
                     result += self[(opp, cfg)]
             return result
 
-        if repr(op) == 'Conv2D[Int8](n=1, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)':
+        if repr(op) == 'Conv2D[Int8](n=1, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)' and \
+            'Conv2D[Int8](n=1, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)' not in self.data:
             yd = self.data['Conv2D[Int8](n=1, i=(1200, 1200)x3+3 w=(7, 7)x64x3 o=(600, 600)x64 by 2)']
 
             yd['cycles'] = str(tuple(x * 4 for x in make_tuple(yd['cycles'])))
@@ -158,7 +159,8 @@ class SimDb:
             yd['llc_accesses'] = float(yd['llc_accesses']) * 4
 
 
-        elif repr(op) == 'Conv2D[Int8](n=16, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)':
+        elif repr(op) == 'Conv2D[Int8](n=16, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)' and \
+            'Conv2D[Int8](n=16, i=(300, 300)x3+3 w=(7, 7)x64x3 o=(150, 150)x64 by 2)' not in self.data:
             yd = self.data['Conv2D[Int8](n=16, i=(1200, 1200)x3+3 w=(7, 7)x64x3 o=(600, 600)x64 by 2)']
 
             yd['cycles'] = str(tuple(x * 4 for x in make_tuple(yd['cycles'])))
