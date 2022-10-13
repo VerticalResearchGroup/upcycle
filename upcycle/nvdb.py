@@ -1,8 +1,12 @@
 from dataclasses import dataclass
+import yaml
 
 from .common import *
 
+from . import arch
+from . import ops
 from . import apps
+from . import simdb
 
 # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf
 a100_peak = {
@@ -183,3 +187,54 @@ def pj_per_op(appname, mode, batch):
     # nv_tops_per_mm2 = trace.flops / nv_area / 1e12
     nv_pj_per_op = nv_pow_w / nvips / trace.flops * 1e12
     return nv_pj_per_op
+
+@dataclass(frozen=True)
+class NvLayerData:
+    arch : arch.Arch
+    arch_ext : simdb.ArchExtConfig
+    op : ops.Operator
+    fp16_lat_sec : float
+
+    @property
+    def tot_cyc(self): raise NotImplementedError()
+
+    @property
+    def tot_lat(self):
+        if self.op.dtype == Dtype.FP16: return self.fp16_lat_sec
+        elif self.op.dtype == Dtype.I8: return self.fp16_lat_sec / 2
+
+    @property
+    def max_pow_w(self): return 300
+
+    @property
+    def tot_flops(self): return self.op.flops
+
+    @property
+    def tot_energy_j(self): raise NotImplementedError()
+
+    @property
+    def util(self):
+        return self.tot_flops / self.tot_lat / \
+            self.arch.total_peak_compute(self.op.dtype, None)
+
+class NvDb(simdb.SimDb):
+    def __init__(self):
+        self.arch = arch.A100()
+        self.data = yaml.load(
+            open(f'./results/{self.arch.keystr}-bench.yaml'),
+            Loader=yaml.SafeLoader)
+
+    def area_mm2(self): return 826
+
+    @functools.lru_cache(maxsize=1024)
+    def __getitem__(self, x):
+        op : ops.Operator
+        (op, _) = x
+        fp16_lat_sec = float(self.data[repr(op)])
+
+        return NvLayerData(
+            self.arch,
+            None,
+            op,
+            fp16_lat_sec if fp16_lat_sec > 0 else 100000)
+

@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+
+from matplotlib import pyplot as plt
+import upcycle as U
+import numpy as np
+import os
+
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
+    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
+
+    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
+    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
+
+    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
+    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
+
+    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
+    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
+
+    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
+    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
+}
+
+infer_online = {appname: app for appname, app in apps.items() if appname.endswith('-infer-online')}
+infer_offline = {appname: app for appname, app in apps.items() if appname.endswith('-infer-offline')}
+train_small = {appname: app for appname, app in apps.items() if appname.endswith('-train-small')}
+train_large = {appname: app for appname, app in apps.items() if appname.endswith('-train-large')}
+
+appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
+variants = ['infer-online', 'infer-offline', 'train-small', 'train-large']
+
+arch =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
+db = U.simdb.SimDb(arch)
+nv = U.nvdb.NvDb()
+
+fig = plt.figure(figsize=(14, 5))
+axs = fig.subplots(4, len(appnames), sharex=True, sharey=True)
+
+for i, appname in enumerate(appnames):
+    for j, variant in enumerate(variants):
+        app = apps[f'{appname}-{variant}']
+        if 'train' in variant: app = U.apps.post_process_train_app(app)
+
+        ax = axs[j, i]
+
+        if i == 0:
+            ax.set_ylabel(variant)
+
+        if j == 3:
+            ax.set_xlabel(appname)
+
+        our_utils = [db[op, arch_ext].util for op in app.oplist]
+        nv_utils = [nv[op, None].util for op in app.oplist]
+
+        xs = np.linspace(0, 1, len(app.oplist))
+        ax.plot(xs, our_utils, label='UPCYCLE-BASE')
+        ax.plot(xs, nv_utils, label='A100')
+
+
+# plt.ylim([0, HEIGHT])
+plt.xticks([])
+plt.tight_layout()
+os.makedirs('./figs', exist_ok=True)
+plt.savefig('figs/compare_by_layers.pdf')
+
+

@@ -70,7 +70,6 @@ class LayerData:
     @property
     def tot_energy_j(self): return sum(self.energies_j)
 
-
     @property
     def util(self):
         return self.tot_flops / self.tot_lat / \
@@ -78,15 +77,13 @@ class LayerData:
 
     def __add__(self, other : 'LayerData') -> 'LayerData':
         return LayerData(
-            self.arch_ext,
             self.arch,
+            self.arch_ext,
             self.ops + other.ops,
             self.onchip_cycles + other.onchip_cycles,
             self.mem_cycs + other.mem_cycs,
             self.powers_w + other.powers_w,
             self.energies_j + other.energies_j)
-
-
 
 class SimDb:
     def __init__(self, arch : HierArch):
@@ -112,7 +109,7 @@ class SimDb:
         pe_area = pe_core_7nm + l1_7nm + l2_slice_area + llc_slice_area
         return pe_area * self.arch.ntiles
 
-    def layer_power_w(self, yd, cyc : int, cfg : ArchExtConfig):
+    def _layer_power_w(self, yd, cyc : int, cfg : ArchExtConfig):
         leakage_w = (
             self.l1_cacti.leak_w +
             self.l2_cacti.leak_w +
@@ -142,11 +139,11 @@ class SimDb:
 
         if isinstance(op, apps.TrainOp):
             result = None
-            for bop in apps.make_bwd_ops(op):
+            for opp in op:
                 if result is None:
-                    result = self[(bop, cfg)]
+                    result = self[(opp, cfg)]
                 else:
-                    result += self[(bop, cfg)]
+                    result += self[(opp, cfg)]
             return result
 
         yd = self.data[repr(op)]
@@ -157,7 +154,7 @@ class SimDb:
         layer_cyc = make_tuple(yd['cycles'])
 
         real_cyc = max(layer_cyc[si], mem_cyc, 1)
-        power_w = self.layer_power_w(yd, real_cyc, cfg)
+        power_w = self._layer_power_w(yd, real_cyc, cfg)
         energy_j = power_w * real_cyc / cfg.freq
 
         return LayerData(

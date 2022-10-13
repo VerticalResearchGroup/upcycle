@@ -21,6 +21,8 @@ class Trace:
     bs : int
     oplist : list[ops.Operator]
 
+    def __iter__(self): return iter(self.oplist)
+
     @property
     def flops(self): return sum(op.flops for op in self.oplist)
 
@@ -78,12 +80,17 @@ class Trace:
 class TrainOp(Operator):
     fwd_op : Operator
 
+    def __iter__(self):
+        yield self.fwd_op
+        yield from make_bwd_ops(self.fwd_op)
+
+    @property
+    def flops(self) -> int: return sum(op.flops for op in self)
+
 def post_process_train_app(app : Trace):
     new_oplist = []
     for op in app.oplist:
-        if op.fwd:
-            new_oplist.append(op)
-            new_oplist.append(TrainOp(op.dtype, False, op))
+        if op.fwd: new_oplist.append(TrainOp(op.dtype, False, op))
 
     return Trace(app.bs, new_oplist)
 
