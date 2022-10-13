@@ -110,9 +110,9 @@ class YamlResult:
     def from_existing_yaml(data):
         return YamlResult(
             simsec=data['simsec'],
-            simsteps=data['simsteps'],
-            timeout=data['timeout'],
-            timeout_steps=data['timeout-steps'],
+            simsteps=1 if 'simsteps' not in data else data['simsteps'],
+            timeout=False if 'timeout' not in data else data['timeout'],
+            timeout_steps=0 if 'timeout-steps' not in data else data['timeout-steps'],
             cycles=data['cycles'],
             l1_accesses=data['l1_accesses'],
             l2_accesses=data['l2_accesses'],
@@ -286,7 +286,7 @@ archs = [
 
     for ntiles in [512, 1024, 2048, 4096]
     for vbits in [256, 512, 1024]
-    for tpeng in [True, False]
+    for tpeng in [True]
 ]
 
 if __name__ == '__main__':
