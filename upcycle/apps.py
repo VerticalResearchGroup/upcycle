@@ -22,11 +22,11 @@ class Trace:
         for i, op in enumerate(self.oplist):
             if type(op) is ops.Linear:
                 self.oplist[i] = ops.Linear(
-                    op.dtype, op.train, op.l, op.m, op.n, op.k, False, True)
+                    op.dtype, op.fwd, op.l, op.m, op.n, op.k, False, True)
 
             elif type(op) is ops.LstmCell:
                 self.oplist[i] = ops.LstmCell(
-                    op.dtype, op.train, op.n, op.d, op.h, False, True)
+                    op.dtype, op.fwd, op.n, op.d, op.h, False, True)
 
         return self
 
@@ -40,15 +40,15 @@ class Trace:
         for i, op in enumerate(self.oplist):
             if type(op) is ops.Linear:
                 self.oplist[i] = ops.Linear(
-                    op.dtype, op.train, op.l, op.m, op.n, op.k, False, False)
+                    op.dtype, op.fwd, op.l, op.m, op.n, op.k, False, False)
 
             elif type(op) is ops.LstmCell:
                 self.oplist[i] = ops.LstmCell(
-                    op.dtype, op.train, op.n, op.d, op.h, False, False)
+                    op.dtype, op.fwd, op.n, op.d, op.h, False, False)
 
         bwd_list = []
         for op in reversed(self.oplist):
-            if op.train:
+            if op.fwd:
                 if type(op) in ops.backward_map:
                     backward_ops = ops.backward_map[type(op)]
                     for bop in backward_ops:
@@ -68,6 +68,20 @@ class Trace:
 
     def count(self, op):
         return self.oplist.count(op)
+
+@ops.operator
+@dataclass(frozen=True)
+class TrainOp(Operator):
+    fwd_op : Operator
+
+def post_process_train_app(app : Trace):
+    new_oplist = []
+    for op in app.oplist:
+        if op.fwd:
+            new_oplist.append(op)
+            new_oplist.append(TrainOp(op.dtype, False, op))
+
+    return Trace(app.bs, new_oplist)
 
 def testmatmul(dtype, n=1):
     return Trace(n, [ ops.Linear(dtype, True, 1, n, 1024, 1024, False, False) ])

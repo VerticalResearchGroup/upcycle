@@ -54,6 +54,8 @@ apps : dict[str, U.apps.Trace] = {
 os.makedirs('./results', exist_ok=True)
 with open(f'./results/a100-bench.yaml', 'w') as f:
     for k, app in apps.items():
+        if 'train' in k:
+            app = U.apps.post_process_train_app(app)
         for op in app.oplist:
             avg_time = U.torchrun.time_torch_op(op, dev, niters=500, warmup=100)
             print(f'{op}: {avg_time}', file=f)

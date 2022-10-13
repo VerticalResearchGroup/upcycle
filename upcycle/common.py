@@ -179,13 +179,9 @@ class Operator:
     # Data type of the operand tensors
     dtype : Dtype
 
-    # Whether or not this operator must be differentiated for backward-
-    # propagation.
-    #
-    # N.B. This is used in some cases where training a network may include some
-    # "frozen" layers which are pre-trained ahead of time, and so are only
-    # involved in the forward pass.
-    train : bool
+    # Whether or not this operator is a forward op that must be differentiated
+    # for backward-propagation.
+    fwd : bool
 
     @property
     def flops(self) -> int: raise NotImplementedError()

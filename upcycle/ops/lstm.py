@@ -21,7 +21,7 @@ class LstmCell(Operator):
     def mm(self):
         return matmul.Linear(
             self.dtype,
-            self.train,
+            self.fwd,
             1,
             self.n,
             self.h * 4,
