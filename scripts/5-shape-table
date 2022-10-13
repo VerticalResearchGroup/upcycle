@@ -46,7 +46,16 @@ arch =  U.arch.arch_factory('hier', dict(
     compute_scale=[0.5, 1, 2, 10, 100, 0],
     noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
+arch_notp =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[1],
+    noc_scale=[1]))
+
 db = U.simdb.SimDb(arch)
+db_notp = U.simdb.SimDb(arch_notp)
+nv = U.nvdb.NvDb()
 
 def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
     arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
@@ -71,14 +80,19 @@ def analyze_app(db : U.simdb.SimDb, app : U.apps.Trace):
 
     unique_ops = list(app.unique_ops)
     counts = [app.count(op) for op in unique_ops]
-    contrib = [counts[i] * db[unique_ops[i], arch_ext].tot_lat / total_lat for i in range(len(unique_ops))]
+    contrib = [counts[i] * unique_ops[i].flops / app.flops for i in range(len(unique_ops))]
 
     ops = sorted(list(zip(unique_ops, counts, contrib)), key=lambda x: x[2], reverse=True)
 
     for i, (op, count, contrib) in enumerate(ops[:5]):
         ld = db[op, arch_ext]
-        print(f'    {i}: ({count}x) {op} ({np.round(contrib * 100, 2)} % contrib., {np.round(ld.util * 100, 2)} % util)\tMost sensitive to: {sens}\tspeedups = {speedups}')
-
+        utils = ' \t '.join([
+            f'{db[op, arch_ext].util * 100:.2f} %',
+            f'{db_notp[op, arch_ext].util * 100:.2f} %',
+            f'{nv[op, None].util * 100:.2f} %'
+        ])
+        # print(f'    {i}: ({count}x) {op} ({np.round(contrib * 100, 2)} % contrib., {np.round(ld.util * 100, 2)} % util)\tMost sensitive to: {sens}\tspeedups = {speedups}')
+        print(f'    {i}: ({count}x) {np.round(contrib * 100, 2)} % flops -- {op}\t{utils}')
 
 
 for appname in appnames:
@@ -90,9 +104,12 @@ for appname in appnames:
                 ('train', False): 'small',
                 ('train', True): 'large',
             }[(mode, large)]
+            app = apps[f'{appname}-{mode}-{batch}']
+
+            if mode == 'train': app = U.apps.post_process_train_app(app)
 
             print(f'{appname}-{mode}-{batch}')
-            analyze_app(db, apps[f'{appname}-{mode}-{batch}'])
+            analyze_app(db, app)
             print()
 
 
