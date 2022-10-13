@@ -19,6 +19,7 @@ try:
 
     import torch.nn.functional as F
     import torch.nn.quantized.functional as qF
+    from torch.profiler import profile, record_function, ProfilerActivity
 
 except ImportError:
     logger.warn(f'Torch not found, run_with_torch will be unavailable.')
@@ -36,8 +37,8 @@ def _(op : ops.Conv, dev):
     elif op.d == 3:
         layer = torch.nn.Conv3d(op.c, op.k, op.sf, stride=op.stride, padding=op.pad, bias=False, dtype=torch.float16, device=dev)
 
-    x_func = lambda: (torch.randn((op.n, op.c, *op.si), dtype=torch.float16, device=dev, requires_grad=False), )
-    return layer, x_func
+    x = torch.randn((op.n, op.c, *op.si), dtype=torch.float16, device=dev, requires_grad=False)
+    return lambda: layer(x)
 
 # @make_op_func.register
 # def _(op : ops.Linear, dev):
@@ -47,43 +48,23 @@ def _(op : ops.Conv, dev):
 #     layer = torch.nn.Linear(op.k, op.n, bias=None).half().to(dev)
 #     return lambda: layer(x)
 
-def time_torch_op(upcycle_op, dev, niters=100, warmup=10):
+def time_torch_op(upcycle_op, torchdev, niters=100, warmup=10):
     assert HAS_TORCH
-    model, x_func = make_op_func(upcycle_op, dev)
-    for _ in range(warmup): model(*x_func())
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
+    func = make_op_func(upcycle_op, torchdev)
+    for _ in range(warmup): func()
 
-    times = []
-    utils = []
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], with_flops=True) as prof:
+        for _ in range(niters):
+            func()
 
-    for _ in range(niters):
-        x = x_func()
         torch.cuda.synchronize()
-        start.record()
-        y = model(*x)
-        end.record()
-        torch.cuda.synchronize()
-        times.append(start.elapsed_time(end) / 1000)
-        op_util_a100 = upcycle_op.flops / times[-1] / a100_peak_fp16
-        utils.append(op_util_a100)
-        print(times[-1], op_util_a100)
-        del y
 
-    times = np.array(times)
-    utils = np.array(utils)
+    avg_time = None
+    for x in prof.key_averages():
+        if x.key == 'cudaLaunchKernel':
+            avg_time = x.cpu_time_total / 1e6 / niters
 
-    avg_time = np.average(times)
-    op_util_a100 = upcycle_op.flops / avg_time / a100_peak_fp16
-    print(f'{upcycle_op} - {upcycle_op.flops / 1e9:.3f} GOPs:  \t\tavg. time={avg_time:.5f}\tutil={op_util_a100 * 100:.3f}%')
-    return times, utils
-
-def run_with_torch(trace : apps.Trace, device_type='cpu', device_id=0, niters=100, warmup=10):
-    assert HAS_TORCH
-    dev = torch.device(device_type, device_id)
-
-    for op in trace.oplist:
-        yield time_torch_op(op, dev, niters=niters, warmup=warmup)
-
+    assert avg_time is not None
+    return avg_time
 
 
