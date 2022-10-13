@@ -70,9 +70,11 @@ for i, appname in enumerate(appnames):
         nv_utils = [nv[op, None].util for op in app.oplist]
 
         xs = np.linspace(0, 1, len(app.oplist))
-        ax.plot(xs, our_utils, label='UPCYCLE-BASE')
-        ax.plot(xs, nv_utils, label='A100')
+        ax.plot(xs, our_utils, label='UPCYCLE-BASE', linewidth=2)
+        ax.plot(xs, nv_utils, label='A100', linewidth=2)
 
+
+plt.xlim([0, 1])
 
 # plt.ylim([0, HEIGHT])
 plt.xticks([])

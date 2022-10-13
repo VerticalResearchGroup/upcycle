@@ -107,12 +107,19 @@ def testconv(dtype, n=1):
 def bertlarge(dtype, n=1, s=512):
     return Trace(n, [
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+    ] * 24 + [
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+    ] * 24 + [
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+    ] * 24 + [
         ops.Matmul(dtype, True, n * 16, s, s, 64, False, True),
+    ] * 24 + [
         ops.Matmul(dtype, True, n * 16, s, 64, s, False, True),
+    ] * 24 + [
         ops.Linear(dtype, True, 1, n * s, 1024, 1024, False, False),
+    ] * 24 + [
         ops.Linear(dtype, True, 1, n * s, 4096, 1024, False, False),
+    ] * 24 + [
         ops.Linear(dtype, True, 1, n * s, 1024, 4096, False, False),
     ] * 24)
 
@@ -325,10 +332,13 @@ def unet3d(dtype, n=1):
     return Trace(n, [
         # N.B. Original spatial dimensions are 128x128x128
         ops.Conv(dtype, True, n, (32, 32, 32), 1, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+    ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+    ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (16, 16, 16), 64, (3, 3, 3), 2, 1, False),
     ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
+    ] * (2*2*2) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 64, (16, 16, 16), 128, (3, 3, 3), 2, 1, False),
     ] * (2*2*2) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
@@ -346,11 +356,14 @@ def unet3d(dtype, n=1):
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 128, (3, 3, 3), 1, 1, False),
     ] + [
         ops.Conv(dtype, True, n, (32, 32, 32), 128, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
+    ] * (2*2*2) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 64, (3, 3, 3), 1, 1, False),
     ] * (2*2*2) + [
         # N.B. Original spatial dimensions are 128x128x128
         ops.Conv(dtype, True, n, (32, 32, 32), 64, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+    ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 32, (3, 3, 3), 1, 1, False),
+    ] * (4*4*4) + [
         ops.Conv(dtype, True, n, (32, 32, 32), 32, (32, 32, 32), 3, (1, 1, 1), 1, 0, False),
     ] * (4*4*4))
 
@@ -364,16 +377,22 @@ def rnnt_infer(dtype, n, il=239, ol=120):
     return Trace(n, ([
         # Encoder
         ops.LstmCell(dtype, False, n, 240, 1024, False, False),
+    ] * il) + ([
         ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
     ] * il) + ([
         ops.LstmCell(dtype, False, n, 2048, 1024, False, False),
+    ] * (il // 2)) + ([
         ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
+    ] * (il // 2)) + ([
         ops.LstmCell(dtype, False, n, 1024, 1024, False, False)
     ] * (il // 2)) + ([
         # Decoder
         ops.LstmCell(dtype, False, n, 320, 320, False, False),
+    ] * ol) + ([
         ops.LstmCell(dtype, False, n, 320, 320, False, False),
+    ] * ol) + ([
         ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
+    ] * ol) + ([
         ops.Linear(dtype, False, 1, n, 512, 28, False, False),
     ] * ol))
 
@@ -381,16 +400,22 @@ def rnnt_train(dtype, n, il=200, ol=200):
     return Trace(n, ([
         # Encoder
         ops.LstmCell(dtype, True, n, 240, 1024, False, False),
+    ] * il) + ([
         ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
     ] * il) + ([
         ops.LstmCell(dtype, True, n, 2048, 1024, False, False),
+    ] * (il // 2)) + ([
         ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
+    ] * (il // 2)) + ([
         ops.LstmCell(dtype, True, n, 1024, 1024, False, False)
     ] * (il // 2)) + ([
         # Decoder
         ops.LstmCell(dtype, True, n, 320, 320, False, False),
+    ] * ol) + ([
         ops.LstmCell(dtype, True, n, 320, 320, False, False),
+    ] * ol) + ([
         ops.Linear(dtype, True, 1, n, 1344, 512, False, False),
+    ] * ol) + ([
         ops.Linear(dtype, True, 1, n, 512, 28, False, False),
     ] * ol))
 
