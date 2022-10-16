@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 class ConvDiTile_NT(ConvDiTile):
     def intrinsic(self, mss, nss, kss):
         assert len(mss) <= self.arch.vlen(self.dtype)
-        assert len(mss) <= self.tk
-        assert len(nss) <= self.tq
-        assert len(kss) <= self.tc
+        assert len(mss) <= self.tc
+        assert len(nss) <= self.tn
+        assert len(kss) <= self.tk
 
         return self.gemm(
             self.arch, None, None, None, False, 0, None, None, None) \
