@@ -14,7 +14,7 @@ from ..arch import *
 from . import c_model
 from . import noc
 
-TIMEOUT=8 * 2600
+TIMEOUT=1000 * 3600
 # TIMEOUT=30
 
 logger = logging.getLogger(__name__)
