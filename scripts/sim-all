@@ -286,7 +286,7 @@ archs = [
 
     for ntiles in [512, 1024, 2048, 4096]
     for vbits in [256, 512, 1024]
-    for tpeng in [True]
+    for tpeng in [True, False]
 ]
 
 if __name__ == '__main__':
