@@ -531,11 +531,11 @@ mlperf_v1_apps = {
         # training, there was 39867330529 total tokens -- an average of 254
         # tokens per sample.
         lambda dtype, n: bertlarge(dtype, n, 254), Dtype.FP16,
-        BatchSizes(None, None, 1, 4)),
+        BatchSizes(None, None, 1, 16)),
     'unet': App(
         unet3d, Dtype.I8,
         unet3d, Dtype.FP16,
-        BatchSizes(1, 2, 1, 16)),
+        BatchSizes(1, 16, 1, 16)),
     'rnnt': App(
         # N.B. The official MLPerf inference benchmark uses librespeech dataset
         # which has an average input length of 239, output length of 120.
