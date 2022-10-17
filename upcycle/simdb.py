@@ -1,3 +1,4 @@
+from numpy import real_if_close
 import yaml
 import functools
 from ast import literal_eval as make_tuple
@@ -72,6 +73,9 @@ class LayerData:
 
     @property
     def util(self):
+        if max(self.onchip_cycles) == 0:
+            return 0
+
         return self.tot_flops / self.tot_lat / \
             self.arch.total_peak_compute(self.ops[0].dtype, self.arch_ext.freq)
 
@@ -171,7 +175,20 @@ class SimDb:
             yd['l2_accesses'] = float(yd['l2_accesses']) * 4
             yd['llc_accesses'] = float(yd['llc_accesses']) * 4
 
-        else: yd = self.data[repr(op)]
+        else:
+            try:
+                yd = self.data[repr(op)]
+            except KeyError:
+                # print(f'No data for {repr(op)}')
+                # print(f'Arch: {self.arch}')
+                return LayerData(
+                    self.arch,
+                    cfg,
+                    (op, ),
+                    (0, ),
+                    (0, ),
+                    (0, ),
+                    (0, ))
 
         mem_bytes_per_cycle = cfg.mem_scale * cfg.membw / cfg.freq
         offchip_bytes = max(yd['total_read_bytes'], yd['total_weight_bytes'])

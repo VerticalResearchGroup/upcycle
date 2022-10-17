@@ -376,29 +376,6 @@ kits19_patches_per_sample = 1544696 / 24612
 def rnnt_infer(dtype, n, il=239, ol=120):
     return Trace(n, ([
         # Encoder
-        ops.LstmCell(dtype, False, n, 240, 1024, False, False),
-    ] * il) + ([
-        ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
-    ] * il) + ([
-        ops.LstmCell(dtype, False, n, 2048, 1024, False, False),
-    ] * (il // 2)) + ([
-        ops.LstmCell(dtype, False, n, 1024, 1024, False, False),
-    ] * (il // 2)) + ([
-        ops.LstmCell(dtype, False, n, 1024, 1024, False, False)
-    ] * (il // 2)) + ([
-        # Decoder
-        ops.LstmCell(dtype, False, n, 320, 320, False, False),
-    ] * ol) + ([
-        ops.LstmCell(dtype, False, n, 320, 320, False, False),
-    ] * ol) + ([
-        ops.Linear(dtype, False, 1, n, 1344, 512, False, False),
-    ] * ol) + ([
-        ops.Linear(dtype, False, 1, n, 512, 28, False, False),
-    ] * ol))
-
-def rnnt_train(dtype, n, il=200, ol=200):
-    return Trace(n, ([
-        # Encoder
         ops.LstmCell(dtype, True, n, 240, 1024, False, False),
     ] * il) + ([
         ops.LstmCell(dtype, True, n, 1024, 1024, False, False),
@@ -480,6 +457,8 @@ class App:
     train_factory : Callable[[], Trace]
     train_dtype : Dtype
     bs : BatchSizes
+    real_infer_flops : int = 0
+    real_train_flops : int = 0
 
     @property
     def infer_flops(self):
@@ -510,20 +489,28 @@ mlperf_v1_apps = {
     'resnet50': App(
         resnet50, Dtype.I8,
         resnet50, Dtype.FP16,
-        BatchSizes(1, 16, 1, 16)),
+        BatchSizes(1, 16, 1, 16),
+        real_infer_flops=8048365984,
+        real_train_flops=23890745465),
     'ssdrn34-300': App(
         None, None,
         ssdrn34_300, Dtype.FP16,
-        BatchSizes(None, None, 1, 16)),
+        BatchSizes(None, None, 1, 16),
+        real_infer_flops=None,
+        real_train_flops=80413135844),
     'ssdrn34-1200': App(
         ssdrn34_1200, Dtype.I8,
         None, None,
-        BatchSizes(1, 16, None, None)),
+        BatchSizes(1, 16, None, None),
+        real_infer_flops=429593776088,
+        real_train_flops=None),
     'bert-large-squad': App(
         # N.B. 178 reflects the average tokens per query from the SQuAD dataset.
         lambda dtype, n: bertlarge(dtype, n, 178), Dtype.I8,
         None, None,
-        BatchSizes(1, 16, None, None)),
+        BatchSizes(1, 16, None, None),
+        real_infer_flops=112109338534,
+        real_train_flops=None),
     'bert-large-pretrain': App(
         None, None,
         # N.B. The official MLPerf code was run with bert pretraining for a full
@@ -531,21 +518,23 @@ mlperf_v1_apps = {
         # training, there was 39867330529 total tokens -- an average of 254
         # tokens per sample.
         lambda dtype, n: bertlarge(dtype, n, 254), Dtype.FP16,
-        BatchSizes(None, None, 1, 16)),
+        BatchSizes(None, None, 1, 16),
+        real_infer_flops=None,
+        real_train_flops=484155665982),
     'unet': App(
         unet3d, Dtype.I8,
         unet3d, Dtype.FP16,
-        BatchSizes(1, 16, 1, 16)),
+        BatchSizes(1, 16, 1, 16),
+        real_infer_flops=925446431521,
+        real_train_flops=925446431521 * 3),
     'rnnt': App(
         # N.B. The official MLPerf inference benchmark uses librespeech dataset
         # which has an average input length of 239, output length of 120.
         lambda dtype, n: rnnt_infer(dtype, n, il=239, ol=120), Dtype.FP16,
-        rnnt_train, Dtype.FP16,
-        BatchSizes(1, 512, 1, 512)),
-    'rnnt-test': App(
-        lambda dtype, n: rnnt_infer(dtype, n, il=389, ol=191), Dtype.FP16,
-        rnnt_train, Dtype.FP16,
-        BatchSizes(1, 512, 1, 512)),
+        lambda dtype, n: rnnt_infer(dtype, n, il=239, ol=120), Dtype.FP16,
+        BatchSizes(1, 512, 1, 512),
+        real_infer_flops=14843599147,
+        real_train_flops=14843599147 * 3),
     'dlrm': App(
         dlrm, Dtype.I8,
         dlrm, Dtype.FP16,

@@ -1,0 +1,80 @@
+#!/usr/bin/env python
+
+from matplotlib import pyplot as plt
+import upcycle as U
+import numpy as np
+import os
+
+apps : dict[str, U.apps.Trace] = {
+    'resnet50-infer':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
+    'resnet50-train':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
+
+    'ssdrn34-infer':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
+    'ssdrn34-train':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
+
+    'unet-infer':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
+    'unet-train':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
+
+    'bert-infer':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
+    'bert-train':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
+
+    'rnnt-infer':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
+    'rnnt-train':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
+}
+
+appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
+
+primary_ops = {
+    'resnet50': 'Conv2D',
+    'ssdrn34': 'Conv2D',
+    'unet': 'Conv3D',
+    'bert': 'MatMul',
+    'rnnt': 'LSTM, Matmul',
+}
+
+def appdata(appname, mode):
+    app = apps[f'{appname}-{mode}']
+    mlperf_app = \
+        U.apps.mlperf_v1_apps[U.apps.short_appname_map[(appname, mode)]]
+
+    real_flops = mlperf_app.real_infer_flops if mode == 'infer' else \
+        mlperf_app.real_train_flops
+
+    if real_flops is None: real_flops = app.flops
+
+    # if real_flops < app.flops: real_flops = app.flops
+
+    return ' & '.join([
+        f'{np.round(app.flops / 1e9, 2)}',
+        str(len(app.unique_ops)),
+        'Static' if appname != 'rnnt' else 'Dynamic',
+        primary_ops[appname],
+        f'{np.round(app.flops / real_flops * 100, 2)}\\%'
+    ])
+
+
+print(f"""
+\\begin{{tabular}}{{lcrrllr}}
+\\hline
+\\multicolumn{{1}}{{c}}{{Network}} &
+Mode &
+\\multicolumn{{1}}{{c}}{{GOPs / Sample}} &
+\\multicolumn{{1}}{{c}}{{\\# Shapes}} &
+\\multicolumn{{1}}{{c}}{{Static/Dyn.}} &
+\\multicolumn{{1}}{{c}}{{Primary Op Types}} &
+\\multicolumn{{1}}{{c}}{{\\% Primary}} \\\\ \\hline
+
+\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Inference}}}} & {appdata('resnet50', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{SSDResnet34}} & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('ssdrn34', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{UNET}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('unet', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{RNN-T}}       & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('rnnt', 'infer')} \\\\
+\\hline
+\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Inference}}}} & {appdata('resnet50', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{SSDResnet34}} & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('ssdrn34', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{UNET}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('unet', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{RNN-T}}       & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('rnnt', 'train')} \\\\
+\\hline
+\\end{{tabular}}
+""")

@@ -87,7 +87,7 @@ def place_lstm_default(arch : Arch, lstm : LstmCell, sim : M.SimBase):
 class LstmCellBwd(LstmCell):
     @staticmethod
     def from_forward(lstm : LstmCell):
-        return LstmCell(lstm.dtype, False, lstm.n, lstm.d, lstm.h, lstm.tr_xh, lstm.tr_wu)
+        return LstmCellBwd(lstm.dtype, False, lstm.n, lstm.d, lstm.h, lstm.tr_xh, lstm.tr_wu)
 
     @property
     def flops(self): return self.mm.flops * 2

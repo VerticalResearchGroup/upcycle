@@ -7,6 +7,7 @@ import numpy as np
 import logging
 import argparse
 import torch
+import yaml
 
 dev = torch.device(os.environ.get('DEV', None))
 
@@ -53,8 +54,9 @@ apps : dict[str, U.apps.Trace] = {
 
 os.makedirs('./results', exist_ok=True)
 
-# with open(f'./results/a100-bench-old.yaml', 'r') as f:
-#     data = yaml.load(f, Loader=yaml.FullLoader)
+if os.path.exists('./results/a100-bench.yaml'):
+    with open(f'./results/a100-bench.yaml', 'r') as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
 
 a100_peak_fp16 = 312e12
 
@@ -67,10 +69,10 @@ with open(f'./results/a100-bench.yaml', 'w') as f:
         if 'train' in k:
             app = U.apps.post_process_train_app(app)
         for op in app.unique_ops:
-            # if repr(op) not in data:
-            avg_time = U.torchrun.time_torch_op(op, dev, niters=800, warmup=200)
-            # else:
-            #     avg_time = data[repr(op)]
+            if repr(op) not in data:
+                avg_time = U.torchrun.time_torch_op(op, dev, niters=800, warmup=200)
+            else:
+                avg_time = data[repr(op)]
             op_util_a100 = op.flops / avg_time / a100_peak_fp16
             print(f'{op}: {avg_time} # {op_util_a100}', file=f)
             print(f'{op}:  \t\tavg. time={avg_time:.5f}\tutil={op_util_a100 * 100:.2f}%')

@@ -70,14 +70,25 @@ for c, appname in enumerate(appnames):
                 compute_scale=[0.5, 1, 2, 10, 100, 0],
                 noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
+            arch_notp =  U.arch.arch_factory('hier', dict(
+                vbits=vbits,
+                geom=U.arch.ntiles_to_geom(ncores),
+                compute_scale=[0.5, 1, 2, 10, 100, 0],
+                noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
             db = U.simdb.cached_simdb(arch)
+            db_notp = U.simdb.cached_simdb(arch_notp)
 
             print(f'{ncores} cores, {vbits}-bit: {db.area_mm2()} mm2')
 
             for freq in freqs:
                 arch_ext = U.simdb.ArchExtConfig(freq, 900 * 2**30)
-                pj_per_op.append(db.pj_per_op(app, arch_ext))
-                tops_per_mm2.append(db.tops_per_mm2(app, arch_ext))
+                if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+                    pj_per_op.append(db.pj_per_op(app, arch_ext))
+                    tops_per_mm2.append(db.tops_per_mm2(app, arch_ext))
+                else:
+                    pj_per_op.append(db_notp.pj_per_op(app, arch_ext))
+                    tops_per_mm2.append(db_notp.tops_per_mm2(app, arch_ext))
 
             axs[r, c].scatter(
                 tops_per_mm2,
