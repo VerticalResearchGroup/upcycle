@@ -2,44 +2,11 @@
 
 from matplotlib import pyplot as plt
 import upcycle as U
+import upcycle.chartutils as CU
 import numpy as np
 import os
 
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-
-apps : dict[str, U.apps.Trace] = {
-    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
-    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
-    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
-    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
-
-    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
-    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
-    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
-    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
-
-    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
-    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
-    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
-    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
-
-    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
-    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
-    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
-    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
-
-    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
-    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
-    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
-    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
-}
-
-infer_online = {appname: app for appname, app in apps.items() if appname.endswith('-infer-online')}
-infer_offline = {appname: app for appname, app in apps.items() if appname.endswith('-infer-offline')}
-train_small = {appname: app for appname, app in apps.items() if appname.endswith('-train-small')}
-train_large = {appname: app for appname, app in apps.items() if appname.endswith('-train-large')}
-
-appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
 
 arch_cfgs = [
     (256, 1024),
@@ -52,13 +19,13 @@ arch_cfgs = [
 
 freqs = list(range(int(1.0e9), int(3.0e9), int(100e6)))
 fig = plt.figure(figsize=(14, 5))
-axs = fig.subplots(2, len(appnames))
+axs = fig.subplots(2, len(CU.appnames))
 plt.subplots_adjust(wspace=0.5)
 
-for c, appname in enumerate(appnames):
+for c, appname in enumerate(CU.appnames):
     for r, mode in enumerate(['infer', 'train']):
         batch = 'offline' if mode == 'infer' else 'large'
-        app = apps[f'{appname}-{mode}-{batch}']
+        app = CU.apps[f'{appname}-{mode}-{batch}']
 
         for i, (vbits, ncores) in enumerate(arch_cfgs):
             pj_per_op = []
@@ -98,10 +65,10 @@ for c, appname in enumerate(appnames):
                 color=colors[i])
 
 
-for c, appname in enumerate(appnames):
+for c, appname in enumerate(CU.appnames):
     for r, mode in enumerate(['infer', 'train']):
         batch = 'offline' if mode == 'infer' else 'large'
-        app = apps[f'{appname}-{mode}-{batch}']
+        app = CU.apps[f'{appname}-{mode}-{batch}']
 
         arch =  U.arch.arch_factory('hier', dict(
             vbits=512,
@@ -120,8 +87,8 @@ for c, appname in enumerate(appnames):
             marker='^',
             color='black')
 
-for app_i in range(len(appnames)):
-    net_name = appnames[app_i]
+for app_i in range(len(CU.appnames)):
+    net_name = CU.appnames[app_i]
     axs[1, app_i].set_xlabel(f'TOP/s / mm^2\n{net_name}')
 
 for mode_j in range(2):

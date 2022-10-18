@@ -501,13 +501,11 @@ class Sim(SimBase):
 
     def place_work(self, tid, wi : WorkItem):
         if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
-        if self.kwstats['timeout']:
-            self.cur_step[tid] += 1
-            return
+        if self.kwstats['timeout']: return
         assert isinstance(wi, WorkItem)
         global USE_C_TRACE
         self.l1[tid].reset_stats()
-        step = self.cur_step[tid]
+        step = self.global_step
 
         # if logger.isEnabledFor(logging.DEBUG) and tid == 0:
         #     logger.debug(f'Tile 0: step={step} wi={wi}')
@@ -540,7 +538,7 @@ class Sim(SimBase):
         self.kwstats['l1_accesses'] += self.l1[tid].get_accesses()
         self.kwstats['l1_hits'] += self.l1[tid].get_hits()
 
-        self.cur_step[tid] += 1
+        self.cur_step[tid] = step + 1
 
     def step(self):
         if self.cancel is not None and self.cancel.value: raise KeyboardInterrupt()
@@ -603,9 +601,9 @@ class Sim(SimBase):
         for i, (cs, ns) in enumerate(self.arch.scales):
             self.cycles[i] += self.compute_cyc[i]
 
-    def barrier(self):
-        max_step = max(self.cur_step)
-        for tid in range(len(self.cur_step)): self.cur_step[tid] = max_step
+    def barrier(self): pass
+        # max_step = max(self.cur_step)
+        # for tid in range(len(self.cur_step)): self.cur_step[tid] = max_step
 
     @property
     def nsteps(self): return max(self.cur_step)

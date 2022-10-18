@@ -9,6 +9,8 @@ from . import ops
 from . import apps
 from . import pat
 
+logger = logging.getLogger(__name__)
+
 pow_c = 1.2e-9
 
 power_table = {
@@ -179,8 +181,8 @@ class SimDb:
             try:
                 yd = self.data[repr(op)]
             except KeyError:
-                # print(f'No data for {repr(op)}')
-                # print(f'Arch: {self.arch}')
+                logger.error(f'No data for {repr(op)}')
+                logger.error(f'Arch: {self.arch}')
                 return LayerData(
                     self.arch,
                     cfg,

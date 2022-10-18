@@ -2,6 +2,7 @@
 
 from matplotlib import pyplot as plt
 import upcycle as U
+import upcycle.chartutils as CU
 import numpy as np
 import os
 import itertools
@@ -33,47 +34,10 @@ def _(op : U.ops.LstmCell):
     layout = U.ops.Linear.layout_str(op.mm.tr_a, op.mm.tr_b)
     return f'I{short_dtype(op.dtype)} Lstm[{layout}]({op.mm.m}x{op.mm.n}x{op.mm.k})'
 
-
-
 @op_short_str.register
 def _(op : U.apps.TrainOp):
     return 'T' + op_short_str(op.fwd_op)[1:]
 
-
-
-apps : dict[str, U.apps.Trace] = {
-    'resnet50-infer-online':  U.apps.mlperf_v1_apps['resnet50'].default_infer_online(),
-    'resnet50-infer-offline': U.apps.mlperf_v1_apps['resnet50'].default_infer_offline(),
-    'resnet50-train-small':   U.apps.mlperf_v1_apps['resnet50'].default_train_small(),
-    'resnet50-train-large':   U.apps.mlperf_v1_apps['resnet50'].default_train_large(),
-
-    'ssdrn34-infer-online':  U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_online(),
-    'ssdrn34-infer-offline': U.apps.mlperf_v1_apps['ssdrn34-1200'].default_infer_offline(),
-    'ssdrn34-train-small':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_small(),
-    'ssdrn34-train-large':   U.apps.mlperf_v1_apps['ssdrn34-300'].default_train_large(),
-
-    'unet-infer-online':  U.apps.mlperf_v1_apps['unet'].default_infer_online(),
-    'unet-infer-offline': U.apps.mlperf_v1_apps['unet'].default_infer_offline(),
-    'unet-train-small':   U.apps.mlperf_v1_apps['unet'].default_train_small(),
-    'unet-train-large':   U.apps.mlperf_v1_apps['unet'].default_train_large(),
-
-    'bert-infer-online':  U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_online(),
-    'bert-infer-offline': U.apps.mlperf_v1_apps['bert-large-squad'].default_infer_offline(),
-    'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
-    'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
-
-    'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
-    'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
-    'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),
-    'rnnt-train-large':   U.apps.mlperf_v1_apps['rnnt'].default_train_large(),
-}
-
-infer_online = {appname: app for appname, app in apps.items() if appname.endswith('-infer-online')}
-infer_offline = {appname: app for appname, app in apps.items() if appname.endswith('-infer-offline')}
-train_small = {appname: app for appname, app in apps.items() if appname.endswith('-train-small')}
-train_large = {appname: app for appname, app in apps.items() if appname.endswith('-train-large')}
-
-appnames = ['resnet50', 'ssdrn34', 'unet', 'bert', 'rnnt']
 
 arch =  U.arch.arch_factory('hier', dict(
     vbits=512,
@@ -285,7 +249,7 @@ print("""
 \\hline
  & \\multicolumn{1}{c}{\\textbf{Op}} & \\multicolumn{2}{c}{\\textbf{UPCYCLE +TP, -TP}} & \\multicolumn{1}{c}{\\textbf{A100}} & \\multicolumn{1}{c}{\\textbf{Comments}} \\\\ \\hline""")
 
-for appname in appnames:
+for appname in CU.appnames:
     for mode in ['infer', 'train']:
         for large in [True]:
             batch = {
@@ -294,7 +258,7 @@ for appname in appnames:
                 ('train', False): 'small',
                 ('train', True): 'large',
             }[(mode, large)]
-            app = apps[f'{appname}-{mode}-{batch}']
+            app = CU.apps[f'{appname}-{mode}-{batch}']
 
             if mode == 'train': app = U.apps.post_process_train_app(app)
 
