@@ -17,14 +17,16 @@ a100_peak = {
 @dataclass(frozen=True)
 class NvidiaAppStats:
     infer_dtype : Dtype
-    infer_online_perf : int
-    infer_offline_perf : int
+    infer_online_perf : float
+    infer_b16_perf : float
+    infer_offline_perf : float
     infer_offline_bs : int
 
     train_dtype : Dtype
-    train_large_perf : int
+    train_b16_perf : float
+    train_large_perf : float
     train_large_bs : int
-    train_small_perf : int
+    train_small_perf : float
     train_small_bs : int
 
 
@@ -36,17 +38,22 @@ a100_perf = {
     'bert-large-squad': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=681.21,
+        infer_b16_perf=2474,
         infer_offline_perf=3206.7, infer_offline_bs=1024,
         train_dtype=Dtype.FP16,
+        train_b16_perf=None,
         train_large_perf=None, train_large_bs=None,
         train_small_perf=None, train_small_bs=None),
 
     # NOTE: Training Only
+    # https://catalog.ngc.nvidia.com/orgs/nvidia/resources/bert_for_tensorflow/performance
     'bert-large-pretrain': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=None,
+        infer_b16_perf=None,
         infer_offline_perf=None, infer_offline_bs=None,
         train_dtype=Dtype.FP16,
+        train_b16_perf=190,
         train_large_perf=2193/8, train_large_bs=56,
         train_small_perf=2, train_small_bs=1),
 
@@ -57,8 +64,10 @@ a100_perf = {
     'resnet50': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=2049.21,
+        infer_b16_perf=19425,
         infer_offline_perf=36864.6, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
+        train_b16_perf=1585,
         train_large_perf=26325/8, train_large_bs=408,
         train_small_perf=193, train_small_bs=1),
 
@@ -69,8 +78,10 @@ a100_perf = {
     'ssdrn34-1200': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=524.77,
+        infer_b16_perf=809,
         infer_offline_perf=913.68, infer_offline_bs=64,
         train_dtype=Dtype.FP16,
+        train_b16_perf=None,
         train_large_perf=None, train_large_bs=None,
         train_small_perf=None, train_small_bs=None),
 
@@ -79,8 +90,10 @@ a100_perf = {
     'ssdrn34-300': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=None,
+        infer_b16_perf=None,
         infer_offline_perf=None, infer_offline_bs=None,
         train_dtype=Dtype.FP16,
+        train_b16_perf=992,
         train_large_perf=12214/8, train_large_bs=112,
         train_small_perf=83, train_small_bs=1),
 
@@ -91,8 +104,10 @@ a100_perf = {
     'rnnt': NvidiaAppStats(
         infer_dtype=Dtype.FP16,
         infer_online_perf=72.06,
+        infer_b16_perf=362,
         infer_offline_perf=13594.4, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
+        train_b16_perf=258,
         train_large_perf=7709/8, train_large_bs=2048/8,
         train_small_perf=38, train_small_bs=2),
 
@@ -102,8 +117,10 @@ a100_perf = {
     'unet': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=2.98 * apps.kits19_patches_per_sample,
+        infer_b16_perf=51.24,
         infer_offline_perf=2.99 * apps.kits19_patches_per_sample, infer_offline_bs=1,
         train_dtype=Dtype.FP16,
+        train_b16_perf=283/8/3,
         train_large_perf=283/8, train_large_bs=56/8,
         train_small_perf=31, train_small_bs=1),
 
@@ -112,8 +129,10 @@ a100_perf = {
     'dlrm': NvidiaAppStats(
         infer_dtype=Dtype.I8,
         infer_online_perf=600183.32,
+        infer_b16_perf=None,
         infer_offline_perf=2.47727e+06, infer_offline_bs=315000,
         train_dtype=Dtype.FP16,
+        train_b16_perf=None,
         train_large_perf=36895473/8, train_large_bs=55296,
         train_small_perf=None, train_small_bs=None),
 }
@@ -125,14 +144,14 @@ def get_perf(appname, mode, batch):
         if batch == 'online':
             result = app.infer_online_perf
         elif batch == 'offline':
-            result = app.infer_offline_perf
+            result = app.infer_b16_perf
         else: assert False
 
     elif mode == 'train':
-        if batch == 'large':
-            result = app.train_large_perf
-        elif batch == 'small':
+        if batch == 'small':
             result = app.train_small_perf
+        elif batch == 'large':
+            result = app.train_b16_perf
         else: assert False
 
     assert result is not None, f'No perf for {appname} {mode} {batch}'
@@ -145,12 +164,12 @@ def get_batch_size(appname, mode, batch):
         if batch == 'online':
             result = 1
         elif batch == 'offline':
-            result = app.infer_offline_bs
+            result = 16
         else: assert False
 
     elif mode == 'train':
         if batch == 'large':
-            result = app.train_large_bs
+            result = 16
         elif batch == 'small':
             result = app.train_small_bs
         else: assert False
