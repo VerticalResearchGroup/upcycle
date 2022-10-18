@@ -15,9 +15,9 @@ arch =  U.arch.arch_factory('hier', dict(
 arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
 db = U.simdb.SimDb(arch)
 
-fig = plt.figure(figsize=(12, 3.5))
-(ismall, ilarge, tsmall, tlarge) = fig.subplots(
-    1, 4,
+fig = plt.figure(figsize=(6, 3.5))
+(ilarge, tlarge) = fig.subplots(
+    1, 2,
     sharey=True)
     # gridspec_kw={'width_ratios': [len(apps.nv_infer_apps), len(apps.nv_train_apps)]})
 BAR_W = 0.44
@@ -70,18 +70,21 @@ def make_plot(ax, apps : dict[str, U.apps.Trace], labels : list[str], mode : str
                 color='#FFFFFF')
 
     ax.set_xticks(pos)
-    ax.set_xticklabels(labels + ['geomean'], rotation=90)
+    ax.set_xticklabels(labels + ['GM'], rotation=45)
     if ylabel:
         ax.set_ylabel('Speedup over A100')
 
     if legend:
         ax.legend(loc='upper center')
 
-
+labels = [
+    CU.prettynames[appname]
+    for appname in CU.appnames
+]
 # make_plot(ismall, infer_online, appnames, 'infer', 'online', ylabel=True, legend=False)
-make_plot(ilarge, CU.infer_offline, CU.appnames, 'infer', 'offline', ylabel=False, legend=False)
+make_plot(ilarge, CU.infer_offline, labels, 'infer', 'offline', ylabel=False, legend=False)
 # make_plot(tsmall, train_small, appnames, 'train', 'small', ylabel=False, legend=False)
-make_plot(tlarge, CU.train_large, CU.appnames, 'train', 'large', ylabel=False, legend=False)
+make_plot(tlarge, CU.train_large, labels, 'train', 'large', ylabel=False, legend=False)
 
 # ismall.set_xlabel('(a) Small Batch\nInference')
 ilarge.set_xlabel('(a) Inference')

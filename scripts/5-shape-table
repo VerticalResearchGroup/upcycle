@@ -265,7 +265,8 @@ for appname in CU.appnames:
             # print(f'{appname}-{mode}-{batch}')
             # print()
             if mode == 'infer':
-                print(f' & \\multicolumn{{5}}{{c}}{{\\textbf{{{appname}}}}} \\\\ \\hline')
+                prettyname = CU.prettynames[appname]
+                print(f' & \\multicolumn{{5}}{{c}}{{\\textbf{{{prettyname}}}}} \\\\ \\hline')
 
             analyze_app(db, app)
             if mode == 'train': print('\\hline')

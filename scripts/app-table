@@ -70,7 +70,7 @@ Mode &
 \\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'infer')} \\\\
 \\multicolumn{{1}}{{l|}}{{RNN-T}}       & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('rnnt', 'infer')} \\\\
 \\hline
-\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Inference}}}} & {appdata('resnet50', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Train}}}}     & {appdata('resnet50', 'train')} \\\\
 \\multicolumn{{1}}{{l|}}{{SSDResnet34}} & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('ssdrn34', 'train')} \\\\
 \\multicolumn{{1}}{{l|}}{{UNET}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('unet', 'train')} \\\\
 \\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'train')} \\\\

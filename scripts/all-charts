@@ -1,0 +1,10 @@
+#!/bin/bash
+
+mkdir -p figs
+
+./scripts/1-nv-compare
+./scripts/1-nv-layers
+./scripts/app-table > figs/app-table.tex
+./scripts/3-dse
+./scripts/4-sensitivity
+./scripts/5-shape-table > figs/shape-table.tex

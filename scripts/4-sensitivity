@@ -11,8 +11,8 @@ ax = fig.subplots(1, 1)
     # gridspec_kw={'width_ratios': [len(apps.nv_infer_apps), len(apps.nv_train_apps)]})
 BAR_W = 1
 HEIGHT = 100
-SCALES = [1, 10, 100, 0]
-
+SCALES = [1, 10, 100]
+XLIM = (len(SCALES) + 1) * len(SCALES) * len(SCALES) - 1
 
 arch =  U.arch.arch_factory('hier', dict(
     vbits=512,
@@ -29,7 +29,7 @@ refperf = {
 }
 
 
-plt.plot([0, 25 * 6], [1, 1], 'k--')
+plt.plot([0, XLIM], [1, 1], 'k--')
 
 
 for i, compute_x in enumerate(SCALES):
@@ -66,7 +66,7 @@ ax.set_xticklabels(xticklabels, rotation=0, fontsize=8)
 
 plt.xlabel('Noc / Mem Scale Factors')
 plt.legend(loc='upper left', fontsize=8)
-plt.xlim([0, (len(SCALES) + 1) * len(SCALES) * len(SCALES) - 1])
+plt.xlim([0, XLIM])
 plt.tight_layout()
 os.makedirs('./figs', exist_ok=True)
 plt.savefig('figs/sensitivity.pdf')

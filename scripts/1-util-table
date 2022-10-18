@@ -16,11 +16,6 @@ arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
 db = U.simdb.SimDb(arch)
 
 print("""
-\\begin{table}[]
-\\small
-\\centering
-\\caption{Comparison of Chip Utilization for \\ourarch vs A100.}
-\\label{tab:util-compare}
 \\begin{tabular}{lrrrr}
  & \\multicolumn{2}{c}{A100}                              & \\multicolumn{2}{c}{\\ourarch}                           \\\\
  & \\multicolumn{1}{c}{Small} & \\multicolumn{1}{c}{Large} & \\multicolumn{1}{c}{Small} & \\multicolumn{1}{c}{Large} \\\\ \\hline
@@ -42,6 +37,4 @@ for mode in ['infer', 'train']:
 
 print("""
 \\end{tabular}
-
-\\end{table}
 """)
