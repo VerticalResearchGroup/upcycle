@@ -48,3 +48,13 @@ prettynames = {
     'bert': 'BERT-Large',
     'rnnt': 'RNN-T'
 }
+
+shortnames = {
+    'resnet50': 'rn50',
+    'ssdrn34': 'ssd',
+    'unet': 'unet',
+    'bert': 'bert',
+    'rnnt': 'rnnt'
+}
+
+base_membw = 900 * 2**30

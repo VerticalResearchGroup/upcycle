@@ -72,13 +72,14 @@ def record_result_to_yaml(f, op : U.Operator, result : U.model.SimResult):
     f.write('\n')
 
 def log_layer(arch : U.Arch, dtype : U.Dtype, app : U.apps.Trace, i, op : U.ops.Operator, result : U.model.SimResult, time_ns=None, details=True, print_yaml=False):
-    gops = int(op.flops / result.cycles * arch.freq / 1e9)
-    eff = np.round(op.flops / result.cycles / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
+    gops = int(op.flops / result.cycles[0] * arch.freq / 1e9)
+    eff = np.round(op.flops / result.cycles[0] / arch.ntiles / arch.peak_opc(dtype) * 100, 2)
     logger.info(f'{green}Layer {i}/{len(app.oplist)}: {op} {reset}')
     if details:
         if time_ns is not None: logger.info(f'+ Simulation time: {time_ns / 1e9} s')
         logger.info(f'+ Latency: {int(result.cycles[0])} cyc, Hops: {np.sum(result.traffic)}')
         logger.info(f'+ Compute: {gops} Gops ({blue}Efficiency: {eff} %{reset})')
+        logging.debug(f'+ Recorded FLOPS: {result.kwstats["flops"]} (Op: {op.flops})')
         if 'avg_dests' in result.kwstats:
             logger.info(f'+ (Max) Avg Dests Per Line: {np.max(result.kwstats["avg_dests"])}')
         if 'avg_groups' in result.kwstats:

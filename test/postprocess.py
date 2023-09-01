@@ -6,7 +6,7 @@ arch =  U.arch.arch_factory('hier', dict(
     compute_scale=[0.5, 2, 10, 100, 0],
     noc_scale=[0.5, 2, 10, 100, 0]))
 
-arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 2.0, 2.0, 1.0)
+arch_ext = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 2.0, 2.0, 1.0)
 rn50 = U.apps.mlperf_v1_apps['resnet50'].default_infer_online()
 db = U.simdb.SimDb(arch)
 

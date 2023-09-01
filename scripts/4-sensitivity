@@ -6,13 +6,20 @@ import upcycle.chartutils as CU
 import numpy as np
 import os
 
-fig = plt.figure(figsize=(12, 3.5))
+fig = plt.figure(figsize=(5, 2.5))
 ax = fig.subplots(1, 1)
     # gridspec_kw={'width_ratios': [len(apps.nv_infer_apps), len(apps.nv_train_apps)]})
 BAR_W = 1
 HEIGHT = 100
 SCALES = [1, 10, 100]
-XLIM = (len(SCALES) + 1) * len(SCALES) * len(SCALES) - 1
+XS = np.array([i for i in range(len(SCALES))])
+GAP = 0.5
+GLEN = len(SCALES) - 1 + GAP
+XLIM = GLEN * len(SCALES) - GAP
+
+print(GAP)
+print(GLEN)
+print(XLIM)
 
 arch =  U.arch.arch_factory('hier', dict(
     vbits=512,
@@ -20,7 +27,7 @@ arch =  U.arch.arch_factory('hier', dict(
     compute_scale=[0.5, 1, 2, 10, 100, 0],
     noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
-arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
+arch_ext = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 1.0, 1.0)
 db = U.simdb.cached_simdb(arch)
 
 refperf = {
@@ -29,44 +36,52 @@ refperf = {
 }
 
 
-plt.plot([0, XLIM], [1, 1], 'k--')
+plt.plot([-GAP, XLIM + GAP], [1, 1], 'k--')
+syms = ['o', '^', 's']
 
-
-for i, compute_x in enumerate(SCALES):
-    ys = []
-    for mem_x in SCALES:
+handles = []
+for j, mem_x in enumerate(SCALES):
+    for i, compute_x in enumerate(SCALES):
+        ys = []
         for noc_x in SCALES:
-            arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, compute_x, noc_x, mem_x)
+            arch_ext = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, compute_x, noc_x, mem_x)
             ys.append(U.stats.geo_mean([
                 db.perf(app, arch_ext) / refperf[appname]
                 for appname, app in CU.apps.items()
             ]))
 
-    print(f'{compute_x}\t{[np.round(y, 2) for y in ys]}')
-    xs = np.arange(len(ys)) * (len(SCALES) + 1) + 1 / 2 + i
-    compute_x_str = r'$\infty$' if compute_x == 0 else f'{compute_x}'
-    ax.bar(xs, ys, BAR_W, label=f'Ex={compute_x_str}x')
+        handle = ax.plot(XS + GLEN * j, ys, label=f'Ex={compute_x}x', marker=syms[i])
+        handles.append(handle[0])
 
-i = 0
-xticklabels = []
-for mem_x in SCALES:
-    for noc_x in SCALES:
-        mem_x_str = r'$\infty$' if mem_x == 0 else f'{mem_x}'
-        noc_x_str = r'$\infty$' if noc_x == 0 else f'{noc_x}'
-        xticklabels.append(f'NoC={noc_x_str}x\nMem={mem_x_str}x')
-        i += 1
+        if j == 1 and i == 2:
+                ax.text(XS[k] + GLEN * j, ys[k], f'Noc={SCALES[k]}x  ', horizontalalignment='right')
+
+    plt.gca().set_prop_cycle(None)
 
 # plt.ylim([0, HEIGHT])
 plt.yscale('log')
 plt.ylabel('Speedup over Baseline')
-ax.set_xticks(
-    np.arange(len(SCALES) * len(SCALES)) * (len(SCALES) + 1) + (len(SCALES) + 1) / 2 - 0.5)
-ax.set_xticklabels(xticklabels, rotation=0, fontsize=8)
+# ax.set_xticks(
+#     np.arange(len(SCALES) * len(SCALES)) * (len(SCALES) + 1) + (len(SCALES) + 1) / 2 - 0.5)
+# ax.set_xticklabels(xticklabels, rotation=0, fontsize=8)
 
+xticks = \
+    [0 + GLEN * i for i in range(len(SCALES))] + \
+    [1 + GLEN * i for i in range(len(SCALES))] + \
+    [2 + GLEN * i for i in range(len(SCALES))]
 
-plt.xlabel('Noc / Mem Scale Factors')
-plt.legend(loc='upper left', fontsize=8)
-plt.xlim([0, XLIM])
+ax.set_xticks(np.array(sorted(xticks)))
+ax.set_xticklabels([
+    'NoC=1x',
+    'NoC=10x\nMem=1x',
+    'NoC=100x',
+    'Mem=10x',
+    'Mem=100x'
+], rotation=0)
+
+plt.xlabel('Noc and Mem Scale Factors')
+plt.legend(loc='upper left', handles=handles[:3])
+plt.xlim([-GAP, XLIM + GAP])
 plt.tight_layout()
 os.makedirs('./figs', exist_ok=True)
 plt.savefig('figs/sensitivity.pdf')

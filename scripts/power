@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+
+import sys
+from matplotlib import pyplot as plt
+import upcycle as U
+import upcycle.chartutils as CU
+import numpy as np
+import os
+import logging
+
+variants = ['infer-offline', 'train-large']
+
+arch =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+arch_notp =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+arch_ext = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 1.0, 1.0)
+db = U.simdb.SimDb(arch)
+db_notp = U.simdb.SimDb(arch_notp)
+nv = U.nvdb.NvDb()
+
+app = CU.apps['rnnt-train-large']
+app_pp = U.apps.post_process_train_app(app)
+
+our_utils = [
+    max(db[op, arch_ext].util, db_notp[op, arch_ext].util)
+    for op in app_pp.unique_ops
+]
+nv_utils = [nv[op, None].util for op in app_pp.unique_ops]
+
+for appname, app in CU.apps.items():
+    t = 0
+    j = 0
+    for op in app:
+        t += db[op, arch_ext].tot_lat
+        j += db[op, arch_ext].tot_energy_j
+
+    print(f'{appname} {t} {j}, {j/t:.2f}')
+
+    t = 0
+    j = 0
+    for op in app:
+        t += db_notp[op, arch_ext].tot_lat
+        j += db_notp[op, arch_ext].tot_energy_j
+
+    print(f'{appname} {t} {j}, {j/t:.2f}')
+    print()

@@ -1,0 +1,101 @@
+#!/usr/bin/env python
+
+from matplotlib import pyplot as plt
+import upcycle as U
+import upcycle.chartutils as CU
+import numpy as np
+import os
+
+def perf(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.perf(app, arch_ext)
+    else:
+        return db_notp.perf(app, arch_ext)
+
+def pj_per_op(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.pj_per_op(app, arch_ext)
+    else:
+        return db_notp.pj_per_op(app, arch_ext)
+
+def tops_per_mm2(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.tops_per_mm2(app, arch_ext)
+    else:
+        return db_notp.tops_per_mm2(app, arch_ext)
+
+vi2048 =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+vi2048_notp = U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+vissd =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(1024),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+vissd_notp = U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(1024),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+
+arch_ext = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 1.0, 1.0)
+arch_ext2 = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 1.0, 1.0)
+db = U.simdb.cached_simdb(vi2048)
+db_notp = U.simdb.cached_simdb(vi2048_notp)
+db_ssd = U.simdb.cached_simdb(vissd)
+db_ssd_notp = U.simdb.cached_simdb(vissd_notp)
+
+speedups = []
+pow_effs = []
+# area_effs = []
+
+for appname, app in CU.apps.items():
+    # print(appname)
+    speedups.append(np.round(perf(db, db_notp, app, arch_ext2), 2) / U.nvdb.get_perf(appname.split('-')[0], appname.split('-')[1], appname.split('-')[2]) )
+    pow_effs.append(np.round(U.nvdb.pj_per_op(appname.split('-')[0], appname.split('-')[1], appname.split('-')[2]) / pj_per_op(db, db_notp, app, arch_ext2), 2))
+    # area_effs.append(np.round(tops_per_mm2(db, db_notp, app, arch_ext) / tops_per_mm2(db_ssd, db_ssd_notp, app, arch_ext2), 2))
+
+    print(f'{appname}:\t{speedups[-1]:.2f}, {pow_effs[-1]:.2f}')
+
+
+gm_speedups = U.stats.geo_mean(speedups)
+gm_pow_effs = U.stats.geo_mean(pow_effs)
+# gm_area_effs = U.stats.geo_mean(area_effs)
+print(f'geomean:        \t{gm_speedups:.2f}, {gm_pow_effs:.2f}')
+
+# for apps, mode, batch in [(CU.infer_offline, 'infer', 'offline'), (CU.train_large, 'train', 'large')]:
+#     print(mode, '-', batch)
+
+#     for appname in apps.keys():
+#         print(appname, mode, batch, perf(db, db_notp, CU.apps[appname], arch_ext2) / U.nvdb.get_perf(appname.split('-')[0], mode, batch))
+#         print(appname, mode, batch, U.nvdb.pj_per_op(appname.split('-')[0], mode, batch) / pj_per_op(db, db_notp, CU.apps[appname], arch_ext2))
+
+#     # speedup = [
+#     #     perf(db_ssd, db_ssd_notp, CU.apps[appname], arch_ext2) / U.nvdb.get_perf(appname.split('-')[0], mode, batch)
+#     #     for appname in apps.keys()
+    # ]
+
+    # poweff = [
+    #     U.nvdb.pj_per_op(appname.split('-')[0], mode, batch) / pj_per_op(db_ssd, db_ssd_notp, CU.apps[appname], arch_ext2)
+    #     for appname in apps.keys()
+    # ]
+
+    # speedup += [U.stats.geo_mean(speedup)]
+    # poweff += [U.stats.geo_mean(poweff)]
+
+    # print(f'Speedup {mode} {batch}: {speedup}')
+    # print(f'Power {mode} {batch}: {poweff}')
+    # print()

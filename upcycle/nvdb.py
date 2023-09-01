@@ -104,10 +104,10 @@ a100_perf = {
     'rnnt': NvidiaAppStats(
         infer_dtype=Dtype.FP16,
         infer_online_perf=72.06,
-        infer_b16_perf=362,
+        infer_b16_perf=9022,
         infer_offline_perf=13594.4, infer_offline_bs=2048,
         train_dtype=Dtype.FP16,
-        train_b16_perf=258,
+        train_b16_perf=7709/8,
         train_large_perf=7709/8, train_large_bs=2048/8,
         train_small_perf=38, train_small_bs=2),
 

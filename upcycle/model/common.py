@@ -467,7 +467,6 @@ class Sim(SimBase):
         self.exec_cycles = {}
         self.perfect_exec_cycles = {}
         self.rss = [[] for _ in range(arch.ntiles)]
-        self.flops = 0
         self.global_step = 0
         self.cur_step = [0 for _ in range(arch.ntiles)]
         self.l1 = [
@@ -480,12 +479,16 @@ class Sim(SimBase):
         self.total_traffic = noc.zero_traffic(arch)
         self.cycles = [0 for _ in self.arch.scales]
         self.compute_cyc = [0 for _ in self.arch.scales]
+        self.kwstats['flops'] = 0
         self.kwstats['timeout'] = False
         self.kwstats['timeout-steps'] = 0
         self.kwstats['rss'] = []
         self.kwstats['l1_accesses'] = 0
         self.kwstats['l1_hits'] = 0
         self.kwstats['llc_accesses'] = 0
+
+    @property
+    def flops(self): return self.kwstats['flops']
 
     def log_exec_cycles(self, step, tid, ncycles, perfect):
         if step not in self.exec_cycles:
@@ -519,7 +522,7 @@ class Sim(SimBase):
             logger.error(f'{wi}')
 
         self.log_exec_cycles(step, tid, wi.exec_lat, wi.perfect_exec_lat)
-        self.flops += wi.flops
+        self.kwstats['flops'] += wi.flops
 
         if USE_C_TRACE:
             for tile in wi.read_trace:
@@ -599,6 +602,10 @@ class Sim(SimBase):
 
     def drain(self):
         for i, (cs, ns) in enumerate(self.arch.scales):
+
+            if logger.isEnabledFor(logging.DEBUG) and cs == 1.0 and ns == 1.0:
+                logger.debug(f'Drain: Cores used: {self.compute_cyc[i]} cyc')
+
             self.cycles[i] += self.compute_cyc[i]
 
     def barrier(self): pass

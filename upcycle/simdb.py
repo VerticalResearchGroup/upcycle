@@ -135,7 +135,7 @@ class SimDb:
             core_w * self.arch.ntiles + \
             cache_w * pow_scale + \
             pat.reflib.netcon_w * self.arch.ntiles + \
-            pat.reflib.hbm_w
+            pat.reflib.hbm_w / 2
 
     @functools.lru_cache(maxsize=1024)
     def __getitem__(self, x):
@@ -227,6 +227,9 @@ class SimDb:
 
     def pj_per_op(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
         return sum(ld.tot_energy_j for ld in self.trace(app, cfg)) / app.flops * 1e12
+
+    def power(self, app : apps.Trace, cfg : ArchExtConfig) -> list[float]:
+        return sum(ld.tot_energy_j for ld in self.trace(app, cfg)) / self.lat(app, cfg)
 
     def tops_per_mm2(self, app : apps.Trace, cfg : ArchExtConfig) -> float:
         # print(f'{app.bs} {app.flops} {self.lat(app, cfg)} {self.area_mm2()}')

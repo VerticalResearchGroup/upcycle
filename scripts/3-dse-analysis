@@ -47,7 +47,7 @@ for c, appname in enumerate(CU.appnames):
             db = U.simdb.cached_simdb(arch)
 
             for freq in freqs:
-                arch_ext = U.simdb.ArchExtConfig(freq, 900 * 2**30)
+                arch_ext = U.simdb.ArchExtConfig(freq, CU.base_membw)
                 pj_per_op.append(db.pj_per_op(app, arch_ext))
                 tops_per_mm2.append(db.tops_per_mm2(app, arch_ext))
 

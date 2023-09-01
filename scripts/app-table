@@ -29,7 +29,7 @@ primary_ops = {
     'ssdrn34': 'Conv2D',
     'unet': 'Conv3D',
     'bert': 'MatMul',
-    'rnnt': 'LSTM, Matmul',
+    'rnnt': 'LSTM, MM',
 }
 
 def appdata(appname, mode):
@@ -42,39 +42,40 @@ def appdata(appname, mode):
 
     if real_flops is None: real_flops = app.flops
 
-    # if real_flops < app.flops: real_flops = app.flops
+    if real_flops < app.flops: real_flops = app.flops
+
+    pct = int(np.round(app.flops / real_flops * 100, 2))
+    if pct == 100: pct = 99
 
     return ' & '.join([
-        f'{np.round(app.flops / 1e9, 2)}',
+        f'{int(np.round(app.flops / 1e9, 2))}',
         str(len(app.unique_ops)),
-        'Static' if appname != 'rnnt' else 'Dynamic',
+        # 'Static' if appname != 'rnnt' else 'Dynamic',
         primary_ops[appname],
-        f'{np.round(app.flops / real_flops * 100, 2)}\\%'
+        f'{pct}\\%'
     ])
 
 
 print(f"""
-\\begin{{tabular}}{{lcrrllr}}
+\\begin{{tabular}}{{lrrllr}}
 \\hline
 \\multicolumn{{1}}{{c}}{{Network}} &
-Mode &
-\\multicolumn{{1}}{{c}}{{GOPs / Sample}} &
-\\multicolumn{{1}}{{c}}{{\\# Shapes}} &
-\\multicolumn{{1}}{{c}}{{Static/Dyn.}} &
-\\multicolumn{{1}}{{c}}{{Primary Op Types}} &
-\\multicolumn{{1}}{{c}}{{\\% Primary}} \\\\ \\hline
+\\multicolumn{{1}}{{c}}{{GOPs}} &
+\\multicolumn{{1}}{{c}}{{Shapes}} &
+\\multicolumn{{1}}{{c}}{{Primary Ops}} &
+\\multicolumn{{1}}{{c}}{{\\%}} \\\\ \\hline
 
-\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Inference}}}} & {appdata('resnet50', 'infer')} \\\\
-\\multicolumn{{1}}{{l|}}{{SSDResnet34}} & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('ssdrn34', 'infer')} \\\\
-\\multicolumn{{1}}{{l|}}{{UNET}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('unet', 'infer')} \\\\
-\\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'infer')} \\\\
-\\multicolumn{{1}}{{l|}}{{RNN-T}}       & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('rnnt', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{RN50}} & {appdata('resnet50', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{SSD}}  & {appdata('ssdrn34', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{UNET}} & {appdata('unet', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{BERT}} & {appdata('bert', 'infer')} \\\\
+\\multicolumn{{1}}{{l|}}{{RNNT}} & {appdata('rnnt', 'infer')} \\\\
 \\hline
-\\multicolumn{{1}}{{l|}}{{Resnet50}}    & \\multicolumn{{1}}{{c|}}{{\\multirow{{5}}{{*}}{{Train}}}}     & {appdata('resnet50', 'train')} \\\\
-\\multicolumn{{1}}{{l|}}{{SSDResnet34}} & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('ssdrn34', 'train')} \\\\
-\\multicolumn{{1}}{{l|}}{{UNET}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('unet', 'train')} \\\\
-\\multicolumn{{1}}{{l|}}{{BERT}}        & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('bert', 'train')} \\\\
-\\multicolumn{{1}}{{l|}}{{RNN-T}}       & \\multicolumn{{1}}{{c|}}{{}}                                  & {appdata('rnnt', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{RN50}} & {appdata('resnet50', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{SSD}}  & {appdata('ssdrn34', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{UNET}} & {appdata('unet', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{BERT}} & {appdata('bert', 'train')} \\\\
+\\multicolumn{{1}}{{l|}}{{RNNT}} & {appdata('rnnt', 'train')} \\\\
 \\hline
 \\end{{tabular}}
 """)

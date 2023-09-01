@@ -17,7 +17,7 @@ class MatmulTileKMNK_NT(MatmulTile):
         assert len(nss) <= self.tn
         assert len(kss) <= self.tk
         num_loads = len(kss) + len(nss) * len(kss)
-        exec_cyc = len(mss) * len(nss)
+        exec_cyc = cld(len(mss), 32) * len(nss) * len(kss)
         return num_loads, exec_cyc
 
 @dataclass(frozen=True)
