@@ -284,8 +284,8 @@ archs = [
         compute_scale=[0.5, 1, 2, 10, 100, 0],
         noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
-    for ntiles in [512, 1024, 2048, 4096]
-    for vbits in [256, 512, 1024]
+    for ntiles in [2048, 3840]
+    for vbits in [512]
     for tpeng in [True, False]
 ]
 

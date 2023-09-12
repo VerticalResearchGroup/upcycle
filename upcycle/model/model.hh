@@ -485,6 +485,7 @@ void hier_traffic(
             SUPPORT_ARCH(5ULL, 32ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(5ULL, 16ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(5ULL, 16ULL, 16ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(5ULL, 48ULL, 80ULL, 4ULL, 8ULL);
         default:
             throw std::runtime_error("Unsupported arch config (LB = 5)");
         }
@@ -496,6 +497,7 @@ void hier_traffic(
             SUPPORT_ARCH(6ULL, 32ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(6ULL, 16ULL, 32ULL, 4ULL, 8ULL);
             SUPPORT_ARCH(6ULL, 16ULL, 16ULL, 4ULL, 8ULL);
+            SUPPORT_ARCH(6ULL, 48ULL, 80ULL, 4ULL, 8ULL);
         default:
             throw std::runtime_error("Unsupported arch config (LB = 6)");
         }
