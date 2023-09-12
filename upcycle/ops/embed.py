@@ -22,6 +22,9 @@ class Embedding(Operator):
     op : str = 'sum'
 
     @property
+    def min_llc_capacity(self) -> int: return 0
+
+    @property
     def flops(self):
         # Assuming a summation, there's n vectors of size d that need to be
         # added element-wise.

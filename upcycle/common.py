@@ -198,4 +198,7 @@ class Operator:
     @property
     def ami(self) -> float: return self.flops / self.total_read_bytes
 
+    @property
+    def min_llc_capacity(self) -> int: raise NotImplementedError()
+
     def make_tensors(self, arch) -> tuple[list, list]: raise NotImplementedError()

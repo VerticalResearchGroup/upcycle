@@ -45,6 +45,9 @@ class LstmCell(Operator):
     def total_write_bytes(self) -> int:
         return self.n * (self.d + self.h) * Dtype.sizeof(self.dtype)
 
+    @property
+    def min_llc_capacity(self) -> int: return 0
+
     def make_tensors(self, arch): return [], []
 
     def __repr__(self):

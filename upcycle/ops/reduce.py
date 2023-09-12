@@ -18,6 +18,9 @@ class Reduce(Operator):
     @property
     def total_load_bytes(self): return self.n * self.m * Dtype.sizeof(self.dtype)
 
+    @property
+    def min_llc_capacity(self) -> int: return 0
+
     def make_tensors(self, arch): return [], []
 
 

@@ -31,6 +31,10 @@ class Matmul(Operator):
     def total_write_bytes(self) -> int:
         return self.l * self.m * self.n * Dtype.sizeof(self.dtype)
 
+    @property
+    def min_llc_capacity(self) -> int:
+        return (self.l * self.m * self.k + self.l * self.k * self.n) * Dtype.sizeof(self.dtype)
+
     def make_tensors(self, arch : Arch):
         l = self.l
         m = self.m

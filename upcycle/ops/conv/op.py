@@ -70,6 +70,13 @@ class Conv(Operator):
     def total_write_bytes(self) -> int:
         return self.n * self.outspatial * self.k * Dtype.sizeof(self.dtype)
 
+    @property
+    def min_llc_capacity(self) -> int:
+        return ( \
+            self.inspatial * self.c + \
+            self.filsize * self.k * self.c
+        ) * Dtype.sizeof(self.dtype)
+
     def make_tensors(self, arch : Arch):
         ti = M.Tensor(arch, 1, self.dtype, (self.n, *tuple(d + 2 * self.pad for d in self.si), self.c))
         tw = M.Tensor(arch, 2, self.dtype, (*self.sf, self.k, self.c))
