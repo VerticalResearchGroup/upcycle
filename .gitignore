@@ -12,3 +12,4 @@ results
 figs
 *.tar.gz
 results2
+*results*
