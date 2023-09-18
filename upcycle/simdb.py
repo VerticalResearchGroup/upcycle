@@ -148,7 +148,7 @@ class SimDb:
             core_w * self.arch.ntiles + \
             cache_w * pow_scale + \
             pat.reflib.netcon_w * self.arch.ntiles + \
-            pat.reflib.hbm_w / 2
+            pat.reflib.hbm_stack_w * self.num_hbms
 
     @functools.lru_cache(maxsize=1024)
     def __getitem__(self, x):
