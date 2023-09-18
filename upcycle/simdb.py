@@ -11,8 +11,6 @@ from . import pat
 
 logger = logging.getLogger(__name__)
 
-pow_c = 1.2e-9
-
 power_table = {
     1.0e9: 1,
     1.1e9: 1.1,
@@ -92,28 +90,40 @@ class LayerData:
             self.energies_j + other.energies_j)
 
 class SimDb:
-    def __init__(self, arch : HierArch):
+    def __init__(self, arch : HierArch, node : int = 7, num_hbms : int = 1):
         self.arch = arch
+        self.node = node
         self.data = yaml.load(
             open(f'./results/{arch.keystr}.yaml'),
             Loader=yaml.SafeLoader)
 
-        self.l1_cacti = pat.cacti.cacti(arch.l1.capacity)
-        self.l2_cacti = pat.cacti.cacti(arch.l2.capacity // arch.tiles_per_group)
-        self.llc_cacti = pat.cacti.cacti(128 * 2**20 // arch.ntiles)
+        self.num_hbms = num_hbms
+        self.l1_cacti = pat.cacti.cacti(arch.l1.capacity, node=node)
+        self.l2_cacti = pat.cacti.cacti(arch.l2.capacity // arch.tiles_per_group, node=node)
+        self.llc_cacti = pat.cacti.cacti(32 * 2**20 // arch.ntiles, node=node)
 
     def area_mm2(self):
-        int8_mac_7nm = pat.reflib.int8_mac_7nm.area
-        vrf_1k_7nm = pat.reflib.vrf_1k_7nm.area
-        core_7nm = pat.reflib.core_7nm.area
-        pe_core_7nm = (int8_mac_7nm * 3 * (self.arch.vbits // 8)) + \
-            vrf_1k_7nm * 2 + core_7nm
+        if self.node == 7:
+            int8_mac = pat.reflib.int8_mac_7nm.area
+            vrf_1k = pat.reflib.vrf_1k_7nm.area
+            core = pat.reflib.core_7nm.area
 
-        l1_7nm = self.l1_cacti.area_mm2
+        elif self.node == 12:
+            int8_mac = pat.reflib.int8_mac_12nm.area
+            vrf_1k = pat.reflib.vrf_1k_12nm.area
+            core = pat.reflib.core_12nm.area
+
+        else: raise NotImplementedError()
+
+        pe_core = (int8_mac * 3 * (self.arch.vbits // 8)) +  vrf_1k * 2 + core
+
+        l1_area = self.l1_cacti.area_mm2
         l2_slice_area = self.l2_cacti.area_mm2
         llc_slice_area = self.llc_cacti.area_mm2
-        pe_area = pe_core_7nm + l1_7nm + l2_slice_area + llc_slice_area
-        return pe_area * self.arch.ntiles
+        pe_area = pe_core + l1_area + l2_slice_area + llc_slice_area
+
+        hbm_area = 9 * self.num_hbms
+        return pe_area * self.arch.ntiles + hbm_area * 1.1
 
     def _layer_power_w(self, yd, cyc : int, cfg : ArchExtConfig):
         leakage_w = (
@@ -123,7 +133,10 @@ class SimDb:
         ) * self.arch.ntiles
 
         pow_scale = power_table[cfg.freq] / power_table[2e9]
-        core_w = pat.reflib.core_7nm.power
+        core_w = {
+            7: pat.reflib.core_7nm.power,
+            12: pat.reflib.core_12nm.power
+        }[self.node]
 
         l1_j = yd['l1_accesses'] * self.l1_cacti.read_j
         l2_j = yd['l2_accesses'] * self.l2_cacti.read_j
@@ -236,5 +249,5 @@ class SimDb:
         return app.flops / self.lat(app, cfg) / self.area_mm2() / 1e12
 
 @functools.lru_cache(maxsize=1024)
-def cached_simdb(arch : HierArch):
-    return SimDb(arch)
+def cached_simdb(arch : HierArch, node=12, num_hbms=2):
+    return SimDb(arch, node=node, num_hbms=num_hbms)
