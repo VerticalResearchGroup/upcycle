@@ -124,8 +124,29 @@ class Arch:
         tpstr = 'tp' if self.tpeng else 'notp'
         return f'upcycle-{tpstr}-{self.ntiles}-{self.vbits}-{self.compute_scale}x-{self.noc_scale}n'
 
+
 @dataclass(order=True, frozen=True)
-class A100(Arch):
+class NvidiaGpu(Arch):
+    def __post_init__(self): pass
+
+    @functools.cached_property
+    def scales(self): raise NotImplementedError()
+    def lookup_scale(self, cs, ns): raise NotImplementedError()
+
+    @functools.cached_property
+    def vbytes(self): raise NotImplementedError()
+    def ntiles(self): raise NotImplementedError()
+    def vlen(self, dtype : Dtype): raise NotImplementedError()
+    def peak_opc(self, dtype : Dtype): raise NotImplementedError()
+    def tile_coords(self, tid): raise NotImplementedError()
+    def coords_tile(self, r, c): raise NotImplementedError()
+    def addr_llc_coords(self, _): raise NotImplementedError()
+
+    @property
+    def defaults(self): raise NotImplementedError()
+
+@dataclass(order=True, frozen=True)
+class A100(NvidiaGpu):
     freq : float = 1.4e9
     tpeng : bool = False
     vbits : int = None
@@ -139,32 +160,34 @@ class A100(Arch):
     compute_scale : tuple[float] = None
     noc_scale : tuple[float] = None
 
-    def __post_init__(self): pass
-
-    @functools.cached_property
-    def scales(self): raise NotImplementedError()
-    def lookup_scale(self, cs, ns): raise NotImplementedError()
-
-    @functools.cached_property
-    def vbytes(self): raise NotImplementedError()
-    def ntiles(self): raise NotImplementedError()
-    def vlen(self, dtype : Dtype): raise NotImplementedError()
-    def peak_opc(self, dtype : Dtype): raise NotImplementedError()
-
     def total_peak_compute(self, dtype : Dtype, _ : float):
         if dtype == Dtype.FP16: return 312e12
         elif dtype == Dtype.I8: return 624e12
 
-    def tile_coords(self, tid): raise NotImplementedError()
-    def coords_tile(self, r, c): raise NotImplementedError()
-    def addr_llc_coords(self, _): raise NotImplementedError()
-
-    @property
-    def defaults(self): raise NotImplementedError()
-
     @property
     def keystr(self): return f'a100'
 
+@dataclass(order=True, frozen=True)
+class H100(NvidiaGpu):
+    freq : float = 1.4e9
+    tpeng : bool = False
+    vbits : int = None
+    macs : int = None
+    nrows : int = None
+    ncols : int = None
+    mapping : TileMapping = None
+    noc_ports_per_dir : int = None
+    line_size : int = None
+    l1 : CacheParams = None
+    compute_scale : tuple[float] = None
+    noc_scale : tuple[float] = None
+
+    def total_peak_compute(self, dtype : Dtype, _ : float):
+        if dtype == Dtype.FP16: return 1513e12 / 2
+        elif dtype == Dtype.I8: return 3026e12 / 2
+
+    @property
+    def keystr(self): return f'h100'
 
 @dataclass(order=True, frozen=True)
 class OracleArch(Arch):
