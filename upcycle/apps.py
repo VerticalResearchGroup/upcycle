@@ -87,6 +87,19 @@ class TrainOp(Operator):
     @property
     def flops(self) -> int: return sum(op.flops for op in self)
 
+    @property
+    def total_read_bytes(self) -> int:
+        return sum(op.total_read_bytes for op in self)
+
+    @property
+    def total_weight_bytes(self) -> int:
+        return sum(op.total_weight_bytes for op in self)
+
+    @property
+    def total_write_bytes(self) -> int:
+        return sum(op.total_write_bytes for op in self)
+
+
 def post_process_train_app(app : Trace):
     new_oplist = []
     for op in app.oplist:
