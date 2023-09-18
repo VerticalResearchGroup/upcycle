@@ -16,6 +16,8 @@ class CactiResult:
     area_mm2 : float
 
 def cacti(size_bytes, node=7):
+    if node == 12: node = 14
+
     fd, cfgfile = tempfile.mkstemp('.cfg', text=True)
     subprocess.check_call([f'{CACTI_DIR}/gencfg', str(size_bytes), cfgfile ])
     output = subprocess.check_output([f'{CACTI_DIR}/cacti', '-infile', cfgfile])
