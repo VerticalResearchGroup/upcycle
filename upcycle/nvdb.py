@@ -164,12 +164,12 @@ def get_batch_size(appname, mode, batch):
         if batch == 'online':
             result = 1
         elif batch == 'offline':
-            result = 16
+            result = app.infer_offline_bs
         else: assert False
 
     elif mode == 'train':
         if batch == 'large':
-            result = 16
+            result = app.train_large_bs
         elif batch == 'small':
             result = app.train_small_bs
         else: assert False
