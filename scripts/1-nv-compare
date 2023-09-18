@@ -1,27 +1,43 @@
 #!/usr/bin/env python
 
+import sys
 from matplotlib import pyplot as plt
 import upcycle as U
 import upcycle.chartutils as CU
 import numpy as np
 import os
 
+compare_with = sys.argv[1]
+
+NCORES = {
+    'a100': 2048,
+    'h100': 3840
+}[compare_with]
+
+MEMBW = {
+    'a100': 900 * 2**30,
+    'h100': 2 * 900 * 2**30
+}[compare_with]
+
+if compare_with == 'a100': import upcycle.nvdb as nvdb
+else: import upcycle.nvdb_h100 as nvdb
+
 arch =  U.arch.arch_factory('hier', dict(
     vbits=512,
-    geom=U.arch.ntiles_to_geom(2048),
+    geom=U.arch.ntiles_to_geom(NCORES),
     compute_scale=[0.5, 1, 2, 10, 100, 0],
     noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
 arch_notp =  U.arch.arch_factory('hier', dict(
     vbits=512,
     tpeng=False,
-    geom=U.arch.ntiles_to_geom(2048),
+    geom=U.arch.ntiles_to_geom(NCORES),
     compute_scale=[0.5, 1, 2, 10, 100, 0],
     noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
-arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
-db = U.simdb.SimDb(arch)
-db_notp = U.simdb.SimDb(arch_notp)
+arch_ext = U.simdb.ArchExtConfig(2.4e9, MEMBW, 1.0, 1.0, 1.0)
+db = U.simdb.SimDb(arch, node=12)
+db_notp = U.simdb.SimDb(arch_notp, node=12)
 
 fig = plt.figure(figsize=(5, 2.75))
 (ilarge, tlarge) = fig.subplots(
@@ -54,29 +70,29 @@ def tops_per_mm2(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
 
 def make_plot(ax, apps : dict[str, U.apps.Trace], labels : list[str], mode : str = 'infer', batch : str = 'offline', ylabel=True, legend=True):
     speedup = [
-        max(db.perf(apps[appname], arch_ext), db_notp.perf(apps[appname], arch_ext)) / U.nvdb.get_perf(appname.split('-')[0], mode, batch)
+        max(db.perf(apps[appname], arch_ext), db_notp.perf(apps[appname], arch_ext)) / nvdb.get_perf(appname.split('-')[0], mode, batch)
         for appname in apps.keys()
     ]
 
     poweff = [
-        U.nvdb.pj_per_op(appname.split('-')[0], mode, batch) / min(db.pj_per_op(apps[appname], arch_ext), db_notp.pj_per_op(apps[appname], arch_ext))
+        nvdb.pj_per_op(appname.split('-')[0], mode, batch) / min(db.pj_per_op(apps[appname], arch_ext), db_notp.pj_per_op(apps[appname], arch_ext))
         for appname in apps.keys()
     ]
     # speedup = [
-    #     perf(db, db_notp, CU.apps[appname], arch_ext) / U.nvdb.get_perf(appname.split('-')[0], mode, batch)
+    #     perf(db, db_notp, CU.apps[appname], arch_ext) / nvdb.get_perf(appname.split('-')[0], mode, batch)
     #     for appname in apps.keys()
     # ]
 
     # poweff = [
-    #     U.nvdb.pj_per_op(appname.split('-')[0], mode, batch) / pj_per_op(db, db_notp, CU.apps[appname], arch_ext)
+    #     nvdb.pj_per_op(appname.split('-')[0], mode, batch) / pj_per_op(db, db_notp, CU.apps[appname], arch_ext)
     #     for appname in apps.keys()
     # ]
 
     speedup += [U.stats.geo_mean(speedup)]
     poweff += [U.stats.geo_mean(poweff)]
 
-    print(f'Speedup {mode} {batch}: {speedup}')
-    print(f'Power {mode} {batch}: {poweff}')
+    print(f'Speedup {mode} {batch}: {np.round(speedup, 2)}')
+    print(f'Power {mode} {batch}: {np.round(poweff, 2)}')
     print()
 
     pos = np.arange(len(speedup))
@@ -137,4 +153,4 @@ plt.ylim([0, HEIGHT])
 plt.tight_layout()
 plt.subplots_adjust(top=0.85)
 os.makedirs('./figs', exist_ok=True)
-plt.savefig('figs/perf_compare.pdf')
+plt.savefig(f'figs/perf_compare_{compare_with}.pdf')
