@@ -487,18 +487,6 @@ class App:
     def default_train_large(self): return self.train_factory(self.train_dtype, n=self.bs.train_large).train()
 
 mlperf_v1_apps = {
-    'testmm': App(
-        testmatmul, Dtype.I8,
-        testmatmul, Dtype.FP16,
-        BatchSizes(1, 8, 1, 8)),
-    'testconv': App(
-        testconv, Dtype.I8,
-        testconv, Dtype.FP16,
-        BatchSizes(1, 8, 1, 8)),
-    'ssd_weirdconv': App(
-        ssd_weirdconv, Dtype.I8,
-        ssd_weirdconv, Dtype.FP16,
-        BatchSizes(1, 16, 1, 16)),
     'resnet50': App(
         resnet50, Dtype.I8,
         resnet50, Dtype.FP16,
