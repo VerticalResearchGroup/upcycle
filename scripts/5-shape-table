@@ -207,9 +207,9 @@ def analyze_app(db : U.simdb.SimDb, iapp : U.apps.Trace, tapp : U.apps.Trace):
     arch_ext_comm = U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 2.0, 1.0)
     arch_ext_mem =  U.simdb.ArchExtConfig(2.4e9, CU.base_membw, 1.0, 1.0, 2.0)
 
-    lines = [[] for _ in range(5)]
+    lines = [[] for _ in range(10)]
 
-    for app in [iapp, tapp]:
+    for ii, app in enumerate([iapp, tapp]):
         total_lat = db.lat(app, arch_ext)
 
         ex2_speedup = total_lat / db.lat(app, arch_ext_ex)
@@ -230,27 +230,29 @@ def analyze_app(db : U.simdb.SimDb, iapp : U.apps.Trace, tapp : U.apps.Trace):
 
         for i, (op, count, contrib) in enumerate(ops[:5]):
             ld = db[op, arch_ext]
+            util = max(db[op, arch_ext].util, db_notp[op, arch_ext].util)
+            # print(op)
             cols = [
                 # f'{ni}',
                 op_short_str(op),
-                f'{int(db[op, arch_ext].util * 100)}\\%',
-                f'{int(db_notp[op, arch_ext].util * 100)}\\%',
+                f'{op.ami:.0f}',
+                f'{int(util * 100)}\\%',
                 f'{int(nv[op, None].util * 100)}\\%',
                 ' '.join(map(process_tag, tags[ti])),
             ]
             if mask[ti]:
-                lines[i] += cols
+                lines[i + ii*5] += cols
                 ni += 1
 
             ti += 1
 
     for line in lines:
-        print(' & '.join(line) + ' \\\\ \\hline')
+        print(' & '.join(line) + ' \\\\')
 
 print("""
-\\begin{tabular}{llrrrl}
+\\begin{tabular}{lrrrl}
 \\hline
-\\multicolumn{1}{c}{\\textbf{Op}} & \\textbf{+TP} & \\textbf{-TP} & \\multicolumn{1}{c}{\\textbf{A100}} & \\multicolumn{1}{c}{\\textbf{Comments}} & \\multicolumn{1}{c}{\\textbf{Op}} & \\textbf{+TP} & \\textbf{-TP} & \\multicolumn{1}{c}{\\textbf{A100}} & \\multicolumn{1}{c}{\\textbf{Comments}} \\\\ \\hline
+\\multicolumn{1}{c}{\\textbf{Op}} & \\textbf{AMI} & \\textbf{G7} & \\multicolumn{1}{c}{\\textbf{A100}} & \\multicolumn{1}{c}{\\textbf{Comments}} \\\\ \\hline
 """)
 
 prettynames = {
@@ -278,7 +280,7 @@ for appname in CU.appnames:
     # print()
     # if mode == 'infer':
     prettyname = prettynames[appname]
-    print(f'\\multicolumn{{10}}{{c}}{{\\textbf{{{prettyname}}}}} \\\\ \\hline')
+    print(f'\\multicolumn{{5}}{{c}}{{\\textbf{{{prettyname}}}}} \\\\ \\hline')
 
     analyze_app(db, iapp, tapp)
     # if mode == 'train':
