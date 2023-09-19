@@ -12,13 +12,13 @@ class Component:
     def freq(self): return 1 / self.delay
 
     def scale_isopower(self, to_node : int):
-        self.area *= coeffs.area_scale_factors[self.node][to_node]
-        self.delay *= coeffs.delayfactor(to_node) / coeffs.delayfactor(self.node)
-        self.node = to_node
-        return self
+        if to_node == 12: to_node = 14
+        area = self.area * coeffs.area_scale_factors[self.node][to_node]
+        delay = self.delay * coeffs.delayfactor(to_node) / coeffs.delayfactor(self.node)
+        return Component(to_node, area, delay, self.power)
 
     def scale_isofreq(self, to_node : int):
-        self.area *= coeffs.area_scale_factors[self.node][to_node]
-        self.power *= coeffs.powerfactor(to_node) / coeffs.powerfactor(self.node)
-        self.node = to_node
-        return self
+        if to_node == 12: to_node = 14
+        area = self.area * coeffs.area_scale_factors[self.node][to_node]
+        power = self.power * coeffs.powerfactor(to_node) / coeffs.powerfactor(self.node)
+        return Component(to_node, area, self.delay, power)

@@ -198,7 +198,7 @@ def get_util(appname, mode, batch):
 def pj_per_op(appname, mode, batch):
     nvips = get_perf(appname, mode, batch)
 
-    nv_pow_w = 300
+    nv_pow_w = 250
     nv_area = 826
     _, trace, _, _ = apps.workload_factory(
         apps.short_appname_map[(appname, mode)], 1, infer=mode == 'infer')
@@ -223,7 +223,7 @@ class NvLayerData:
         elif self.op.dtype == Dtype.I8: return self.fp16_lat_sec / 2
 
     @property
-    def max_pow_w(self): return 300
+    def max_pow_w(self): return None
 
     @property
     def tot_flops(self): return self.op.flops

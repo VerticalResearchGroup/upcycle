@@ -1,5 +1,9 @@
 from dataclasses import dataclass
+import sys
 from .. import pat
+from matplotlib import pyplot as plt
+
+from .chartutils import *
 
 def area_scale(from_node, to_node):
     factors = {
@@ -12,35 +16,16 @@ def area_scale(from_node, to_node):
 
     return factors[from_node] / factors[to_node]
 
-@dataclass
-class GalileoConfig:
-    flops : float
-    area : float
-    ns_area : float
-
-    @property
-    def s_area(self): return self.area - self.ns_area
-
-def low_ami_speedup(from_cfg : GalileoConfig, to_cfg : GalileoConfig, k=0.2):
-    return (to_cfg.s_area / from_cfg.s_area) ** k
-
-galileos = {
-    12: GalileoConfig(flops=120e12, area=195, ns_area=50),
-    # 7:  GalileoConfig(flops=262e12, area=417, ns_area=100),
-    # 5:  GalileoConfig(flops=715e12, area=834, ns_area=100),
-    3:  GalileoConfig(flops=555e12, area=830, ns_area=100),
-}
-
+target_node = int(sys.argv[1])
 
 sbw = 1.0
-sc = 555 / 120
+sc = area_scale(12, target_node)
 
 print('='*20)
-for rl in [0.01, 0.1]:
+for rl in [0.1, 0.01]:
     print(f'==== rl={rl} ====')
-    for rbw_ in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-        rbw = rbw_ - rl
-        rc = 1 - rbw - rl
+    for rc in [0.64, 0.5]:
+        rbw = 1 - rc - rl
 
         speedup = lambda k: 1 / (rbw / sbw + rl / (sc**k) + rc / sc)
 
@@ -48,3 +33,49 @@ for rl in [0.01, 0.1]:
 
     print()
 
+# with figure(COL_WIDTH, 3, 3, 1, f'truegap-{target_node}', sharex=True) as (fig, axs):
+#     axs[0].set_ylabel(f'$\gamma = 1.0$')
+#     axs[1].set_ylabel(f'Speedup\n$\gamma = 0.5$')
+#     axs[2].set_ylabel(f'$\gamma = 0.25$')
+#     axs[2].set_xlabel('$r_c$')
+
+#     xs = np.linspace(0, 1, 1000)
+
+#     plt.xlim([0.2, 0.8])
+
+#     for ax, gamma in zip(axs, [1.0, 0.5, 0.25]):
+#         for i, rl in enumerate([0.1, 0.01]):
+#             vspeedup = np.vectorize(
+#                 lambda rc: 1 / ((1 - rl - rc) / sbw + rl / (sc**gamma) + rc / sc))
+
+#             ax.plot(xs, vspeedup(xs), label=f'$r_l={rl}$', color=colors[i])
+
+#         ax.semilogy()
+#         ax.grid()
+
+#     axs[0].legend(loc='upper left', fontsize=8)
+#     fig.tight_layout(pad=0.5)
+
+
+
+with figure(COL_WIDTH, 3, 1, 1, f'truegap-{target_node}', sharex=True) as (fig, ax):
+    ax.set_ylabel(f'Speedup')
+    ax.set_xlabel('$r_c$')
+    xs = np.linspace(0, 1, 1000)
+
+    plt.xlim([0.2, 0.8])
+
+    for i, gamma in enumerate([1.0, 0.5, 0.25]):
+        for rl in [0.1, 0.01]:
+            vspeedup = np.vectorize(
+                lambda rc: 1 / ((1 - rl - rc) / sbw + rl / (sc**gamma) + rc / sc))
+
+            linestyle = '-' if rl == 0.1 else '--'
+            ax.plot(xs, vspeedup(xs), label=f'$r_l={rl}$, $\gamma={gamma}$', linestyle=linestyle, color=colors[i])
+
+    ax.semilogy()
+    ax.grid(which='major', alpha=1.0)
+    ax.grid(which='minor', alpha=0.5)
+
+    ax.legend(loc='upper left', fontsize=8)
+    fig.tight_layout(pad=0.5)

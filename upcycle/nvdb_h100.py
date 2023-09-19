@@ -71,7 +71,7 @@ class NvLayerData:
         elif self.op.dtype == Dtype.I8: return self.fp16_lat_sec / 2
 
     @property
-    def max_pow_w(self): return 700
+    def max_pow_w(self): return None
 
     @property
     def tot_flops(self): return self.op.flops

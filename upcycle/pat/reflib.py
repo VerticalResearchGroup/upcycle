@@ -29,5 +29,5 @@ netcon_12nm = Component(16, 1.0, 1 / 1e9, 65e-3).scale_isofreq(14)
 netcon_7nm = Component(16, 1.0, 1 / 1e9, 65e-3).scale_isofreq(7)
 
 # We are assuming HBM2 takes ~24 W
-hbm_w = 24 # 4 stacks, 6 W each
+hbm_stack_w = 6 # 4 stacks, 6 W each
 netcon_w = 30/4/1000
