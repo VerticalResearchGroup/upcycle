@@ -44,27 +44,44 @@ for c, appname in enumerate(CU.appnames):
                 compute_scale=[0.5, 1, 2, 10, 100, 0],
                 noc_scale=[0.5, 1, 2, 10, 100, 0]))
 
-            db = U.simdb.cached_simdb(arch)
+            arch_notp =  U.arch.arch_factory('hier', dict(
+                vbits=vbits,
+                geom=U.arch.ntiles_to_geom(ncores),
+                compute_scale=[0.5, 1, 2, 10, 100, 0],
+                noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+            db = U.simdb.cached_simdb(arch, node=12, num_hbms=2)
+            db_notp = U.simdb.cached_simdb(arch_notp, node=12, num_hbms=2)
 
             for freq in freqs:
                 arch_ext = U.simdb.ArchExtConfig(freq, CU.base_membw)
-                pj_per_op.append(db.pj_per_op(app, arch_ext))
-                tops_per_mm2.append(db.tops_per_mm2(app, arch_ext))
+                if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+                    pj_per_op = db.pj_per_op(app, arch_ext)
+                    tops_per_mm2 = db.tops_per_mm2(app, arch_ext)
+                else:
+                    pj_per_op = db_notp.pj_per_op(app, arch_ext)
+                    tops_per_mm2 = db_notp.tops_per_mm2(app, arch_ext)
 
                 if vbits == 512 and ncores == 2048 and freq == 2.4e9:
-                    base_pow = db.pj_per_op(app, arch_ext)
-                    base_area = db.tops_per_mm2(app, arch_ext)
+                    base_pow = pj_per_op
+                    base_area = tops_per_mm2
 
-                peak_ops = ncores * vbits / 8 * 2 * freq
+                # peak_ops = ncores * vbits / 8 * 2 * freq
 
                 # if np.abs(peak_ops - 624e12) / 624e12 > 0.05: continue
-
-                if best_pow is None or db.pj_per_op(app, arch_ext) < best_pow:
-                    best_pow = db.pj_per_op(app, arch_ext)
-                    best_area = db.tops_per_mm2(app, arch_ext)
+                if best_pow is None or pj_per_op < best_pow:
+                    best_pow = pj_per_op
+                    best_area = tops_per_mm2
                     best_cfg = (vbits, ncores, freq)
 
         (vbits, ncores, freq) = best_cfg
         peak_ops = ncores * vbits / 8 * 2 * freq
 
-        print(f'{appname}-{mode}-{batch}:\t {vbits}-bit\t {ncores}-core\t {freq/1e9:.2f}GHz\t {peak_ops/1e12:.2f} TOPS\t area_ratio = {best_area / base_area:.2f}\t power_ratio = {best_pow / base_pow:.2f}')
+        print('\t'.join([
+            f'{appname}-{mode}-{batch}:\t {vbits}-bit',
+            f'{ncores}-{freq/1e9:.2f}-{peak_ops/1e12:.2f}',
+            f'{best_pow:.2f} pJ/op',
+            f'{best_area:.2f} TOPS/mm2',
+            f'area_ratio = {best_area / base_area:.2f}',
+            f'power_ratio = {best_pow / base_pow:.2f}',
+        ]))
