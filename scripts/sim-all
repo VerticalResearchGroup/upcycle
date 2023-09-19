@@ -270,6 +270,11 @@ apps : dict[str, U.apps.Trace] = {
     'bert-train-small':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_small(),
     'bert-train-large':   U.apps.mlperf_v1_apps['bert-large-pretrain'].default_train_large(),
 
+    'dlrm-infer-online':  U.apps.mlperf_v1_apps['dlrm'].default_infer_online(),
+    'dlrm-infer-offline': U.apps.mlperf_v1_apps['dlrm'].default_infer_offline(),
+    'dlrm-train-small':   U.apps.mlperf_v1_apps['dlrm'].default_train_small(),
+    'dlrm-train-large':   U.apps.mlperf_v1_apps['dlrm'].default_train_large(),
+
     'rnnt-infer-online':  U.apps.mlperf_v1_apps['rnnt'].default_infer_online(),
     'rnnt-infer-offline': U.apps.mlperf_v1_apps['rnnt'].default_infer_offline(),
     'rnnt-train-small':   U.apps.mlperf_v1_apps['rnnt'].default_train_small(),

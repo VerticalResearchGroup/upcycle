@@ -539,7 +539,7 @@ mlperf_v1_apps = {
     'dlrm': App(
         dlrm, Dtype.I8,
         dlrm, Dtype.FP16,
-        BatchSizes(1, 2048, 1, 2048)),
+        BatchSizes(1, 4096, 1, 4096)),
 }
 
 short_appname_map = {
