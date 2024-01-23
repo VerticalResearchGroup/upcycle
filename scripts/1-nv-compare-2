@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+
+import sys
+from matplotlib import pyplot as plt
+import upcycle as U
+import upcycle.chartutils as CU
+import numpy as np
+import os
+
+import upcycle.nvdb as nvdb_a100
+import upcycle.nvdb_h100 as nvdb_h100
+
+g7 =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+g7_notp =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(2048),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+g7arch_ext = U.simdb.ArchExtConfig(2.4e9, 900 * 2**30, 1.0, 1.0, 1.0)
+g7db = U.simdb.SimDb(g7, node=12)
+g7db_notp = U.simdb.SimDb(g7_notp, node=12)
+
+g5 =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    geom=U.arch.ntiles_to_geom(3840),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+g5_notp =  U.arch.arch_factory('hier', dict(
+    vbits=512,
+    tpeng=False,
+    geom=U.arch.ntiles_to_geom(3840),
+    compute_scale=[0.5, 1, 2, 10, 100, 0],
+    noc_scale=[0.5, 1, 2, 10, 100, 0]))
+
+g5arch_ext = U.simdb.ArchExtConfig(2.4e9, 1800 * 2**30, 1.0, 1.0, 1.0)
+g5db = U.simdb.SimDb(g5, node=12)
+g5db_notp = U.simdb.SimDb(g5_notp, node=12)
+
+
+fig = plt.figure(figsize=(5, 2.75))
+(ax0, ax1) = fig.subplots(
+    1, 2,
+    sharey=True)
+    # gridspec_kw={'width_ratios': [len(apps.nv_infer_apps), len(apps.nv_train_apps)]})
+BAR_W = 0.44
+HEIGHT = 4
+
+
+def perf(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.perf(app, arch_ext)
+    else:
+        return db_notp.perf(app, arch_ext)
+
+def pj_per_op(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.pj_per_op(app, arch_ext)
+    else:
+        return db_notp.pj_per_op(app, arch_ext)
+
+def tops_per_mm2(db : U.simdb.SimDb, db_notp : U.simdb.SimDb, app, arch_ext):
+    if db.perf(app, arch_ext) > db_notp.perf(app, arch_ext):
+        return db.tops_per_mm2(app, arch_ext)
+    else:
+        return db_notp.tops_per_mm2(app, arch_ext)
+
+def make_plot(
+    ax,
+    iapps : dict[str, U.apps.Trace],
+    tapps : dict[str, U.apps.Trace],
+    db : U.simdb.SimDb,
+    db_notp : U.simdb.SimDb,
+    arch_ext,
+    nvdb,
+    labels : list[str],
+    ylabel=True,
+    legend=True
+):
+    infer_speedup = [
+        max(db.perf(iapps[appname], arch_ext), db_notp.perf(iapps[appname], arch_ext)) / nvdb.get_perf(appname.split('-')[0], 'infer', 'offline')
+        for appname in iapps.keys()
+    ]
+
+    train_speedup = [
+        max(db.perf(tapps[appname], arch_ext), db_notp.perf(tapps[appname], arch_ext)) / nvdb.get_perf(appname.split('-')[0], 'train', 'large')
+        for appname in tapps.keys()
+    ]
+
+
+    # pj_per_op = [
+    #     min(db.pj_per_op(iapps[appname], arch_ext), db_notp.pj_per_op(iapps[appname], arch_ext))
+    #     for appname in iapps.keys()
+    # ] + [
+    #     min(db.pj_per_op(tapps[appname], arch_ext), db_notp.pj_per_op(tapps[appname], arch_ext))
+    #     for appname in tapps.keys()
+    # ]
+
+
+    pj_per_op = [
+        nvdb.pj_per_op(appname.split('-')[0], 'infer', 'offline')
+        for appname in iapps.keys()
+    ] + [
+        nvdb.pj_per_op(appname.split('-')[0], 'train', 'large')
+        for appname in tapps.keys()
+    ]
+
+    print(U.stats.geo_mean(pj_per_op))
+
+
+    infer_speedup += [U.stats.geo_mean(infer_speedup)]
+    train_speedup += [U.stats.geo_mean(train_speedup)]
+
+    pos = np.arange(len(infer_speedup))
+    r1 = ax.bar(pos - BAR_W / 2, infer_speedup, BAR_W, label='Speedup', color='#4E67C8')
+    r2 = ax.bar(pos + BAR_W / 2, train_speedup, BAR_W, label='Rel. Efficiency', color='#5DCEAF')
+
+    for i in range(len(infer_speedup)):
+        if int(infer_speedup[i]) > HEIGHT:
+            ax.annotate(
+                f'{int(infer_speedup[i])}',
+                (pos[i] - BAR_W / 2, HEIGHT - 0.35),
+                textcoords="offset points",
+                xytext=(0, 0),
+                ha='center',
+                fontsize=10 if infer_speedup[i] < 100 else 7,
+                    color='#FFFFFF')
+
+        if int(train_speedup[i]) > HEIGHT:
+            ax.annotate(
+                f'{int(train_speedup[i])}',
+                (pos[i] + BAR_W / 2, HEIGHT - 0.25),
+                textcoords="offset points",
+                xytext=(0, 0),
+                ha='center',
+                fontsize=10 if train_speedup[i] < 100 else 7,
+                    color='#000000')
+
+    ax.set_xticks(pos)
+    ax.set_xticklabels(labels + ['GM'], rotation=45)
+    if ylabel:
+        ax.set_ylabel('Speedup over A100')
+
+    if legend:
+        ax.legend(loc='upper center')
+
+    return r1, r2
+
+labels = [
+    CU.shortnames[appname]
+    for appname in CU.appnames
+]
+# make_plot(None, CU.infer_online, CU.appnames, 'infer', 'online', ylabel=True, legend=False)
+r1, r2 = make_plot(ax0, CU.infer_offline, CU.train_large, g7db, g7db_notp, g7arch_ext, nvdb_a100, labels, ylabel=False, legend=False)
+_, _ = make_plot(ax1, CU.infer_offline, CU.train_large, g5db, g5db_notp, g5arch_ext, nvdb_h100, labels, ylabel=False, legend=False)
+
+# make_plot(None, CU.train_small, CU.appnames, 'train', 'small', ylabel=False, legend=False)
+# r1, r2 = make_plot(tlarge, CU.train_large, labels, 'train', 'large', ylabel=False, legend=False)
+
+# ismall.set_xlabel('(a) Small Batch\nInference')
+ax0.set_xlabel('(a) G7 vs A100')
+# tsmall.set_xlabel('(c) Small Batch\nTraining')
+ax1.set_xlabel('(b) G5 vs H100')
+
+plt.figlegend(
+    [r1, r2],
+    ['Inference Speedup', 'Training Speedup'],
+    loc='upper center',
+    ncol=2)
+plt.ylim([0, 4])
+plt.tight_layout()
+plt.subplots_adjust(top=0.85)
+os.makedirs('./figs', exist_ok=True)
+plt.savefig(f'figs/perf_compare_g7_g5.pdf')

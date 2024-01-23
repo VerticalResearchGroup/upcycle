@@ -59,13 +59,17 @@ print(f'12nm/5nm area scale: {area_scale(12, 5):.4f}')
 print(f'12nm/3nm area scale: {area_scale(12, 3):.4f}')
 
 
-galileo_area(768, 512, 12)
 
-galileo_area(2048, 512, 12)
-galileo_area(4096 + 1024 + 256, 512, 7)
+l1_cacti = pat.cacti.cacti(32 * 1024, node=16)
+print(l1_cacti)
 
-galileo_area(3840, 512, 12)
-galileo_area(16384, 512, 5)
+# galileo_area(768, 512, 12)
 
-galileo_area(3584, 512, 12)
-galileo_area(16384 + 8192, 512, 3)
+# galileo_area(2048, 512, 12)
+# galileo_area(4096 + 1024 + 256, 512, 7)
+
+# galileo_area(3840, 512, 12)
+# galileo_area(16384, 512, 5)
+
+# galileo_area(3584, 512, 12)
+# galileo_area(16384 + 8192, 512, 3)

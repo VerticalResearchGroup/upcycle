@@ -18,18 +18,32 @@ def area_scale(from_node, to_node):
 
 target_node = int(sys.argv[1])
 
+# 7nm: 0.8 / 0.59
+# 5nm: 1.95
+
+freq_speedup = {
+    7: 0.8 / 0.59,
+    5: 1.95,
+    3: 1.95 * 1.11,
+}
+
 sbw = 1.0
-sc = area_scale(12, target_node)
+ac = area_scale(12, target_node)
+sc = area_scale(12, target_node) * freq_speedup[target_node]
+
+print(f'sbw: {sbw}')
+print(f'sc: {sc}')
+print(f'sl: {ac**0.5}')
 
 print('='*20)
-for rl in [0.1, 0.01]:
-    print(f'==== rl={rl} ====')
-    for rc in [0.64, 0.5]:
+for rc in [0.64, 0.5]:
+    for rl in [0.1, 0.01]:
+        print(f'==== rl={rl} ====')
         rbw = 1 - rc - rl
 
-        speedup = lambda k: 1 / (rbw / sbw + rl / (sc**k) + rc / sc)
+        speedup = lambda k: 1 / (rbw / sbw + rl / (ac**k) + rc / sc)
 
-        print(f'{rbw:3.2f} & {rc:3.2f} & {speedup(0.25):3.2f} & {speedup(0.5):3.2f} & {speedup(1.0):3.2f} \\\\')
+        print(f'{rbw:3.2f} & {rc:3.2f} & {speedup(0.5):3.2f} \\\\')
 
     print()
 
@@ -58,12 +72,13 @@ for rl in [0.1, 0.01]:
 
 
 
-with figure(COL_WIDTH, 3, 1, 1, f'truegap-{target_node}', sharex=True) as (fig, ax):
+with figure(COL_WIDTH, 2.25, 1, 1, f'truegap-{target_node}', sharex=True) as (fig, ax):
     ax.set_ylabel(f'Speedup')
     ax.set_xlabel('$r_c$')
     xs = np.linspace(0, 1, 1000)
 
     plt.xlim([0.2, 0.8])
+    plt.ylim([1, 15])
 
     for i, gamma in enumerate([1.0, 0.5, 0.25]):
         for rl in [0.1, 0.01]:

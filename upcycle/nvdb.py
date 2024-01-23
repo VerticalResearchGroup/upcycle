@@ -145,14 +145,14 @@ def get_perf(appname, mode, batch):
             result = app.infer_online_perf
         elif batch == 'offline':
             result = app.infer_b16_perf
-        else: assert False
+        else: assert False, batch
 
     elif mode == 'train':
-        if batch == 'small':
+        if batch == 'small' or batch == 'offline':
             result = app.train_small_perf
-        elif batch == 'large':
+        elif batch == 'large' or batch == 'online':
             result = app.train_b16_perf
-        else: assert False
+        else: assert False, batch
 
     assert result is not None, f'No perf for {appname} {mode} {batch}'
     return result
